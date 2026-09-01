@@ -2,8 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { sampleJobs, sampleSettings } from '@/lib/sandbox-data';
 import type { Job, JobWithResults, Result, Settings } from '@/lib/types';
 
-const JOBS_KEY = 'telegram-checker:sandbox-jobs';
-const SETTINGS_KEY = 'telegram-checker:sandbox-settings';
+const JOBS_KEY = 'telegram-checker:sandbox-jobs-vietnamese';
+const SETTINGS_KEY = 'telegram-checker:sandbox-settings-vietnamese';
+const LEGACY_JOBS_KEY = 'telegram-checker:sandbox-jobs';
+const LEGACY_SETTINGS_KEY = 'telegram-checker:sandbox-settings';
+
+const legacyJobNames: Record<string, string> = {
+  'Northstar / Q2 outreach': 'Northstar / Tiếp cận quý 2',
+  'Archway / imported leads': 'Archway / Danh sách liên hệ đã nhập',
+  'Slate / conference roster': 'Slate / Danh sách hội nghị',
+  'Meridian / partner list': 'Meridian / Danh sách đối tác',
+};
 
 function readStorage<T>(key: string, fallback: T): T {
   try {
@@ -21,8 +30,10 @@ export function useSandbox() {
 
   useEffect(() => {
     const storedJobs = readStorage<JobWithResults[] | null>(JOBS_KEY, null);
-    setJobs(storedJobs ?? sampleJobs);
-    setSettings(readStorage(SETTINGS_KEY, sampleSettings));
+    const legacyJobs = readStorage<JobWithResults[] | null>(LEGACY_JOBS_KEY, null);
+    const sourceJobs = storedJobs ?? legacyJobs;
+    setJobs(sourceJobs?.map((job) => ({ ...job, name: legacyJobNames[job.name] ?? job.name })) ?? sampleJobs);
+    setSettings(readStorage(SETTINGS_KEY, readStorage(LEGACY_SETTINGS_KEY, sampleSettings)));
     setHydrated(true);
   }, []);
 

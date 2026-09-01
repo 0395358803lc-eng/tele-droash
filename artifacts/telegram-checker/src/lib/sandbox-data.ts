@@ -11,7 +11,7 @@ export const sampleSettings: Settings = {
 export const sampleJobs: JobWithResults[] = [
   {
     id: 'job-northstar',
-    name: 'Northstar / Q2 outreach',
+    name: 'Northstar / Tiếp cận quý 2',
     status: 'running',
     total: 1280,
     processed: 846,
@@ -31,7 +31,7 @@ export const sampleJobs: JobWithResults[] = [
   },
   {
     id: 'job-archway',
-    name: 'Archway / imported leads',
+    name: 'Archway / Danh sách liên hệ đã nhập',
     status: 'paused',
     total: 482,
     processed: 311,
@@ -47,7 +47,7 @@ export const sampleJobs: JobWithResults[] = [
   },
   {
     id: 'job-slate',
-    name: 'Slate / conference roster',
+    name: 'Slate / Danh sách hội nghị',
     status: 'completed',
     total: 196,
     processed: 196,
@@ -62,7 +62,7 @@ export const sampleJobs: JobWithResults[] = [
   },
   {
     id: 'job-meridian',
-    name: 'Meridian / partner list',
+    name: 'Meridian / Danh sách đối tác',
     status: 'failed',
     total: 72,
     processed: 23,

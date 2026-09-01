@@ -1,0 +1,1 @@
+- [Di trú dữ liệu khi bản địa hóa](localization-storage-migration.md) — Khi đổi ngôn ngữ dữ liệu mẫu cục bộ, cần giữ khóa cũ và di trú nhãn thay vì chỉ thay dữ liệu mặc định.
