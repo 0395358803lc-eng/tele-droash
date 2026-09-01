@@ -1,10 +1,11 @@
-# [Project name]
+# Telegram Checker
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Telegram Checker is a browser dashboard for preparing, monitoring, reviewing, and exporting Telegram phone-number checking jobs.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/telegram-checker run dev` — run the dashboard through its managed workflow
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -22,15 +23,23 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/telegram-checker/` — React/Vite dashboard at the root preview path
+- `artifacts/telegram-checker/src/hooks/use-sandbox.ts` — browser-local job/settings state and JSON/CSV export helpers
+- `artifacts/telegram-checker/src/pages/` — overview, jobs, and settings screens
+- `telegram-phone-number-checker/` — extracted Python 1.3.2 engine and its original CLI documentation
+- `lib/api-spec/openapi.yaml` — shared API contract (currently health-only; dashboard is intentionally local sandbox until the Python engine is connected)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The first UI pass is explicitly sandboxed: sample records are labeled as sample data and no Telegram credentials are stored in the browser.
+- Job and safety settings persist in browser local storage so the interface can be explored without a database or live Telegram account.
+- The original Python engine is kept intact under `telegram-phone-number-checker/` rather than rewritten into the frontend.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Overview dashboard with workspace metrics, active run controls, recent jobs, safety posture, and export actions.
+- Searchable job ledger with progress breakdowns, privacy-aware result states, pause/resume, deletion confirmation, and JSON/CSV export.
+- Settings screen for connection readiness, phone region, retry ceiling, request interval, auto-resume, and restoring sample data.
 
 ## User preferences
 
@@ -38,7 +47,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- The dashboard is not a live Telegram connection yet; configure and connect the Python engine before treating results as operational data.
+- Vite build commands require workflow-provided `PORT` and `BASE_PATH`; use the managed web workflow for preview.
 
 ## Pointers
 

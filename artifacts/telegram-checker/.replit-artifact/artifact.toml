@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Telegram Checker"
+description = "A focused operations dashboard for running Telegram phone-number checks, monitoring durable jobs, reviewing result states, and exporting findings safely."
+version = "1.0.0"
+id = "artifacts/telegram-checker"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18541
+
+[services.development]
+run = "pnpm --filter @workspace/telegram-checker run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/telegram-checker", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/telegram-checker/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18541"
+BASE_PATH = "/"

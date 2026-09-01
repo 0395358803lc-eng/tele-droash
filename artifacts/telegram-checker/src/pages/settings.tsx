@@ -1,0 +1,41 @@
+import { useEffect, useState } from 'react';
+import { Check, ChevronDown, CircleHelp, RotateCcw, Save, ShieldCheck, SlidersHorizontal, TimerReset, WifiOff } from 'lucide-react';
+import { AppShell } from '@/components/app-shell';
+import { Button, Label, Panel, TextInput } from '@/components/ui-primitives';
+import { useSandbox } from '@/hooks/use-sandbox';
+
+const regions = [
+  { value: 'US', label: 'United States (+1)' },
+  { value: 'GB', label: 'United Kingdom (+44)' },
+  { value: 'FR', label: 'France (+33)' },
+  { value: 'DE', label: 'Germany (+49)' },
+  { value: 'AU', label: 'Australia (+61)' },
+  { value: 'JP', label: 'Japan (+81)' },
+];
+
+export default function Settings() {
+  const { settings, hydrated, updateSettings, resetSandbox } = useSandbox();
+  const [draft, setDraft] = useState(settings);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (hydrated) setDraft(settings);
+  }, [hydrated]);
+
+  if (!hydrated) return <AppShell><div className="space-y-5"><div className="h-10 w-48 animate-pulse rounded bg-[hsl(var(--muted))]" /><div className="h-52 animate-pulse rounded-lg bg-[hsl(var(--muted))]" /><div className="h-80 animate-pulse rounded-lg bg-[hsl(var(--muted))]" /></div></AppShell>;
+
+  function saveSettings() {
+    updateSettings({ ...draft, maxAttempts: Math.max(1, Math.min(10, Number(draft.maxAttempts))), minRequestInterval: Math.max(.2, Number(draft.minRequestInterval)) });
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2200);
+  }
+
+  return <AppShell>
+    <div className="max-w-4xl space-y-6 pb-20">
+      <section className="animate-rise"><div className="font-mono text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">Workspace controls</div><h1 className="mt-1 font-display text-3xl font-semibold tracking-[-.04em]">Settings</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Set safe defaults for the checker. Everything here stays in this browser until a real engine is connected.</p></section>
+      <Panel className="overflow-hidden animate-rise animate-rise-delay-1"><div className="flex items-start gap-4 border-b border-[hsl(var(--border))] px-5 py-5"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[hsl(var(--accent)/.19)] text-[hsl(29_58%_31%)]"><WifiOff size={17} /></div><div className="flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="font-display text-base font-semibold">Connection status</h2><span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--accent)/.18)] px-2.5 py-1 text-[10px] font-bold text-[hsl(29_58%_31%)]"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--accent))]" /> Not connected</span></div><p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Relaycheck is a frontend-only shell around a Python CLI engine. No Telegram credentials are stored or used in this sandbox.</p></div></div><div className="flex flex-col justify-between gap-3 bg-[hsl(var(--muted)/.35)] px-5 py-4 sm:flex-row sm:items-center"><div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><ShieldCheck size={14} className="text-[hsl(var(--primary))]" /> Configuration profile: <strong className="font-mono text-[hsl(var(--foreground))]">{draft.connectionConfigured ? 'ready' : 'not set'}</strong></div><Button variant="outline" onClick={() => { setDraft((current) => ({ ...current, connectionConfigured: !current.connectionConfigured })); setSaved(false); }} data-testid="button-toggle-connection-profile">{draft.connectionConfigured ? 'Mark profile incomplete' : 'Mark profile ready'}</Button></div></Panel>
+      <Panel className="animate-rise animate-rise-delay-2"><div className="border-b border-[hsl(var(--border))] px-5 py-5"><div className="flex items-center gap-2"><SlidersHorizontal size={16} className="text-[hsl(var(--primary))]" /><h2 className="font-display text-base font-semibold">Checking safety</h2></div><p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">Conservative request behavior for long-running sample jobs.</p></div><div className="grid gap-5 px-5 py-5 sm:grid-cols-2"><div><Label htmlFor="phone-region">Phone region</Label><div className="relative"><select id="phone-region" value={draft.phoneRegion} onChange={(event) => setDraft({ ...draft, phoneRegion: event.target.value })} className="h-10 w-full appearance-none rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-3 pr-9 text-sm outline-none focus:border-[hsl(var(--primary))]" data-testid="select-phone-region">{regions.map((region) => <option key={region.value} value={region.value}>{region.label}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-3 top-3 text-[hsl(var(--muted-foreground))]" /></div><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Used when an imported number has no country prefix.</p></div><div><Label htmlFor="max-attempts">Maximum attempts</Label><TextInput id="max-attempts" type="number" min={1} max={10} value={draft.maxAttempts} onChange={(event) => setDraft({ ...draft, maxAttempts: Number(event.target.value) })} data-testid="input-max-attempts" /><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Retry ceiling per number, from 1 to 10.</p></div><div><Label htmlFor="request-interval">Minimum request interval</Label><div className="relative"><TextInput id="request-interval" type="number" min={.2} step={.1} value={draft.minRequestInterval} onChange={(event) => setDraft({ ...draft, minRequestInterval: Number(event.target.value) })} className="pr-12" data-testid="input-request-interval" /><span className="pointer-events-none absolute right-3 top-3 font-mono text-[10px] text-[hsl(var(--muted-foreground))]">sec</span></div><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Wait time between requests; lower values are less conservative.</p></div><div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] p-3.5"><label className="flex cursor-pointer items-start gap-3"><input type="checkbox" checked={draft.autoResume} onChange={(event) => setDraft({ ...draft, autoResume: event.target.checked })} className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]" data-testid="checkbox-auto-resume" /><span><span className="block text-sm font-semibold">Auto-resume paused jobs</span><span className="mt-1 block text-[11px] leading-relaxed text-[hsl(var(--muted-foreground))]">Allow the engine to continue after a recoverable interruption.</span></span></label></div></div><div className="flex flex-col justify-between gap-3 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/.35)] px-5 py-4 sm:flex-row sm:items-center"><span className="text-xs text-[hsl(var(--muted-foreground))]">Changes apply to new engine runs.</span><Button onClick={saveSettings} data-testid="button-save-settings">{saved ? <><Check size={14} /> Saved locally</> : <><Save size={14} /> Save settings</>}</Button></div></Panel>
+      <Panel className="animate-rise animate-rise-delay-3"><div className="flex flex-col justify-between gap-4 px-5 py-5 sm:flex-row sm:items-center"><div className="flex items-start gap-3"><div className="mt-0.5 text-[hsl(var(--muted-foreground))]"><TimerReset size={17} /></div><div><h2 className="font-display text-sm font-semibold">Reset sandbox data</h2><p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Restore the original sample jobs and safety settings in this browser.</p></div></div><Button variant="outline" onClick={() => { if (window.confirm('Restore the original sample records?')) resetSandbox(); }} data-testid="button-reset-sandbox"><RotateCcw size={14} /> Restore samples</Button></div><div className="flex items-center gap-2 border-t border-[hsl(var(--border))] px-5 py-3 text-[11px] text-[hsl(var(--muted-foreground))]"><CircleHelp size={13} /> This action affects local browser state only.</div></Panel>
+    </div>
+  </AppShell>;
+}
