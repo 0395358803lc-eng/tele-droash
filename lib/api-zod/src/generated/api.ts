@@ -160,3 +160,145 @@ export const DeleteTelegramAccountParams = zod.object({
 export const DeleteTelegramAccountResponse = zod.void()
 
 
+/**
+ * @summary List persisted Telegram check jobs
+ */
+export const ListTelegramJobsResponse = zod.object({
+  "jobs": zod.array(zod.object({
+  "id": zod.string(),
+  "accountId": zod.string(),
+  "name": zod.string(),
+  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed']),
+  "total": zod.number(),
+  "processed": zod.number(),
+  "found": zod.number(),
+  "notDiscoverable": zod.number(),
+  "errors": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Save a completed Telegram check job and its results
+ */
+export const createTelegramJobBodyNameMax = 120;
+
+export const createTelegramJobBodyResultsMax = 1000;
+
+
+
+export const CreateTelegramJobBody = zod.object({
+  "accountId": zod.string(),
+  "name": zod.string().min(1).max(createTelegramJobBodyNameMax),
+  "results": zod.array(zod.object({
+  "phone": zod.string(),
+  "status": zod.enum(['found', 'not_discoverable', 'invalid', 'error', 'rate_limited']),
+  "username": zod.string().nullish(),
+  "displayName": zod.string().nullish(),
+  "telegramId": zod.string().nullish(),
+  "lastOnline": zod.string().nullish(),
+  "errorMessage": zod.string().nullish(),
+  "retryAfterSeconds": zod.number().nullish(),
+  "checkedAt": zod.coerce.date()
+})).min(1).max(createTelegramJobBodyResultsMax)
+})
+
+export const CreateTelegramJobResponse = zod.object({
+  "id": zod.string(),
+  "accountId": zod.string(),
+  "name": zod.string(),
+  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed']),
+  "total": zod.number(),
+  "processed": zod.number(),
+  "found": zod.number(),
+  "notDiscoverable": zod.number(),
+  "errors": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).and(zod.object({
+  "results": zod.array(zod.object({
+  "phone": zod.string(),
+  "status": zod.enum(['found', 'not_discoverable', 'invalid', 'error', 'rate_limited']),
+  "username": zod.string().nullish(),
+  "displayName": zod.string().nullish(),
+  "telegramId": zod.string().nullish(),
+  "lastOnline": zod.string().nullish(),
+  "errorMessage": zod.string().nullish(),
+  "retryAfterSeconds": zod.number().nullish(),
+  "checkedAt": zod.coerce.date()
+}))
+}))
+
+
+/**
+ * @summary Get a persisted Telegram check job with results
+ */
+export const GetTelegramJobParams = zod.object({
+  "jobId": zod.coerce.string()
+})
+
+export const GetTelegramJobResponse = zod.object({
+  "id": zod.string(),
+  "accountId": zod.string(),
+  "name": zod.string(),
+  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed']),
+  "total": zod.number(),
+  "processed": zod.number(),
+  "found": zod.number(),
+  "notDiscoverable": zod.number(),
+  "errors": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).and(zod.object({
+  "results": zod.array(zod.object({
+  "phone": zod.string(),
+  "status": zod.enum(['found', 'not_discoverable', 'invalid', 'error', 'rate_limited']),
+  "username": zod.string().nullish(),
+  "displayName": zod.string().nullish(),
+  "telegramId": zod.string().nullish(),
+  "lastOnline": zod.string().nullish(),
+  "errorMessage": zod.string().nullish(),
+  "retryAfterSeconds": zod.number().nullish(),
+  "checkedAt": zod.coerce.date()
+}))
+}))
+
+
+/**
+ * @summary Update the persisted job status
+ */
+export const UpdateTelegramJobParams = zod.object({
+  "jobId": zod.coerce.string()
+})
+
+export const UpdateTelegramJobBody = zod.object({
+  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed'])
+})
+
+export const UpdateTelegramJobResponse = zod.object({
+  "id": zod.string(),
+  "accountId": zod.string(),
+  "name": zod.string(),
+  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed']),
+  "total": zod.number(),
+  "processed": zod.number(),
+  "found": zod.number(),
+  "notDiscoverable": zod.number(),
+  "errors": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a persisted Telegram check job
+ */
+export const DeleteTelegramJobParams = zod.object({
+  "jobId": zod.coerce.string()
+})
+
+export const DeleteTelegramJobResponse = zod.void()
+
+

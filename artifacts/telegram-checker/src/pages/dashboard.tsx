@@ -4,7 +4,7 @@ import { Link } from 'wouter';
 import { AppShell } from '@/components/app-shell';
 import { JobModal } from '@/components/job-modal';
 import { Button, EmptyState, Panel, ProgressBar, Skeleton, StatusPill } from '@/components/ui-primitives';
-import { exportCsv, exportJson, useSandbox } from '@/hooks/use-sandbox';
+import { exportCsv, exportJson, usePersistentJob, useSandbox } from '@/hooks/use-sandbox';
 import type { JobWithResults } from '@/lib/types';
 
 function formatTime(value: string) {
@@ -18,7 +18,9 @@ function percent(job: JobWithResults) {
 export default function Dashboard() {
   const { jobs, settings, hydrated, toggleJob, addJob } = useSandbox();
   const [showModal, setShowModal] = useState(false);
-  const activeJob = useMemo(() => jobs.find((job) => job.status === 'running' || job.status === 'paused') ?? jobs[0], [jobs]);
+  const activeSummary = useMemo(() => jobs.find((job) => job.status === 'running' || job.status === 'paused') ?? jobs[0], [jobs]);
+  const activeDetail = usePersistentJob(activeSummary?.id);
+  const activeJob = activeDetail.data ?? activeSummary;
   const totals = useMemo(() => jobs.reduce((acc, job) => ({ total: acc.total + job.total, processed: acc.processed + job.processed, found: acc.found + job.found, errors: acc.errors + job.errors }), { total: 0, processed: 0, found: 0, errors: 0 }), [jobs]);
 
   if (!hydrated) return <AppShell><div className="space-y-6"><Skeleton className="h-10 w-64" /><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-28" />)}</div><Skeleton className="h-80" /></div></AppShell>;
@@ -50,6 +52,6 @@ export default function Dashboard() {
       </section>
       <section className="grid gap-5 lg:grid-cols-[1fr_1fr] animate-rise animate-rise-delay-3"><Panel className="p-5"><div className="flex items-center gap-2"><SlidersHorizontal size={16} className="text-[hsl(var(--primary))]" /><h2 className="font-display text-base font-semibold">Thiết lập vận hành</h2></div><div className="mt-4 grid grid-cols-2 gap-5"><div><div className="font-mono text-xl font-semibold">{settings.maxAttempts}</div><div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Số lần thử tối đa</div></div><div><div className="font-mono text-xl font-semibold">{settings.autoResume ? 'Bật' : 'Tắt'}</div><div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Tự động tiếp tục</div></div></div><Link href="/settings" className="mt-5 inline-flex items-center gap-1 text-xs font-bold text-[hsl(var(--primary))]" data-testid="link-review-settings">Xem cài đặt an toàn <ArrowUpRight size={13} /></Link></Panel><Panel className="flex items-start gap-3 bg-[hsl(var(--sidebar))] p-5 text-[hsl(var(--sidebar-foreground))]"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[hsl(var(--sidebar-primary)/.16)] text-[hsl(var(--sidebar-primary))]"><Download size={16} /></div><div><h2 className="font-display text-base font-semibold text-[hsl(var(--sidebar-accent-foreground))]">Xuất dữ liệu có chọn lọc</h2><p className="mt-1 text-xs leading-relaxed text-[hsl(var(--sidebar-foreground)/.62)]">Tệp xuất chỉ chứa tác vụ đã chọn và trạng thái kết quả ghi nhận. Không bao gồm thông tin đăng nhập hoặc siêu dữ liệu kết nối.</p><Link href="/jobs" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-[hsl(var(--sidebar-primary))]" data-testid="link-export-center">Mở khu vực xuất dữ liệu <ArrowUpRight size={13} /></Link></div></Panel></section>
     </div>
-     {showModal && <JobModal onClose={() => setShowModal(false)} onCreate={(name, phones, results) => { addJob(name, phones, results); setShowModal(false); }} />}
+      {showModal && <JobModal onClose={() => setShowModal(false)} onCreate={async (accountId, name, results) => { await addJob(accountId, name, results); setShowModal(false); }} />}
   </AppShell>;
 }

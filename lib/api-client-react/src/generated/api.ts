@@ -24,9 +24,15 @@ import type {
   Error,
   HealthStatus,
   ListTelegramAccounts200,
+  ListTelegramJobs200,
+  NotFoundResponse,
   TelegramAccount,
   TelegramCheckRequest,
   TelegramCheckResponse,
+  TelegramJob,
+  TelegramJobInput,
+  TelegramJobUpdate,
+  TelegramJobWithResults,
   TelegramLoginStart,
   TelegramLoginStartResponse,
   TelegramLoginVerify
@@ -569,5 +575,373 @@ export const useDeleteTelegramAccount = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteTelegramAccountMutationOptions(options));
+    }
+
+export const getListTelegramJobsUrl = () => {
+
+
+
+
+  return `/api/jobs`
+}
+
+/**
+ * @summary List persisted Telegram check jobs
+ */
+export const listTelegramJobs = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListTelegramJobs200> => {
+
+  return customFetch<ListTelegramJobs200>(getListTelegramJobsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTelegramJobsQueryKey = () => {
+    return [
+    `/api/jobs`
+    ] as const;
+    }
+
+
+export const getListTelegramJobsQueryOptions = <TData = Awaited<ReturnType<typeof listTelegramJobs>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTelegramJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTelegramJobsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTelegramJobs>>> = ({ signal }) => listTelegramJobs({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTelegramJobs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTelegramJobsQueryResult = NonNullable<Awaited<ReturnType<typeof listTelegramJobs>>>
+export type ListTelegramJobsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List persisted Telegram check jobs
+ */
+
+export function useListTelegramJobs<TData = Awaited<ReturnType<typeof listTelegramJobs>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTelegramJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTelegramJobsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateTelegramJobUrl = () => {
+
+
+
+
+  return `/api/jobs`
+}
+
+/**
+ * @summary Save a completed Telegram check job and its results
+ */
+export const createTelegramJob = async (telegramJobInput: TelegramJobInput, options?: Parameters<typeof customFetch>[1]): Promise<TelegramJobWithResults> => {
+
+  return customFetch<TelegramJobWithResults>(getCreateTelegramJobUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(telegramJobInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTelegramJobMutationOptions = <TError = ErrorType<BadRequestResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTelegramJob>>, TError,{data: BodyType<TelegramJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTelegramJob>>, TError,{data: BodyType<TelegramJobInput>}, TContext> => {
+
+const mutationKey = ['createTelegramJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTelegramJob>>, {data: BodyType<TelegramJobInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createTelegramJob(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTelegramJobMutationResult = NonNullable<Awaited<ReturnType<typeof createTelegramJob>>>
+    export type CreateTelegramJobMutationBody = BodyType<TelegramJobInput>
+    export type CreateTelegramJobMutationError = ErrorType<BadRequestResponse>
+
+    /**
+ * @summary Save a completed Telegram check job and its results
+ */
+export const useCreateTelegramJob = <TError = ErrorType<BadRequestResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTelegramJob>>, TError,{data: BodyType<TelegramJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTelegramJob>>,
+        TError,
+        {data: BodyType<TelegramJobInput>},
+        TContext
+      > => {
+      return useMutation(getCreateTelegramJobMutationOptions(options));
+    }
+
+export const getGetTelegramJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/jobs/${jobId}`
+}
+
+/**
+ * @summary Get a persisted Telegram check job with results
+ */
+export const getTelegramJob = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<TelegramJobWithResults> => {
+
+  return customFetch<TelegramJobWithResults>(getGetTelegramJobUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTelegramJobQueryKey = (jobId: string,) => {
+    return [
+    `/api/jobs/${jobId}`
+    ] as const;
+    }
+
+
+export const getGetTelegramJobQueryOptions = <TData = Awaited<ReturnType<typeof getTelegramJob>>, TError = ErrorType<NotFoundResponse>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTelegramJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTelegramJobQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTelegramJob>>> = ({ signal }) => getTelegramJob(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTelegramJob>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTelegramJobQueryResult = NonNullable<Awaited<ReturnType<typeof getTelegramJob>>>
+export type GetTelegramJobQueryError = ErrorType<NotFoundResponse>
+
+
+/**
+ * @summary Get a persisted Telegram check job with results
+ */
+
+export function useGetTelegramJob<TData = Awaited<ReturnType<typeof getTelegramJob>>, TError = ErrorType<NotFoundResponse>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTelegramJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTelegramJobQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateTelegramJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/jobs/${jobId}`
+}
+
+/**
+ * @summary Update the persisted job status
+ */
+export const updateTelegramJob = async (jobId: string,
+    telegramJobUpdate: TelegramJobUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TelegramJob> => {
+
+  return customFetch<TelegramJob>(getUpdateTelegramJobUrl(jobId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(telegramJobUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateTelegramJobMutationOptions = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTelegramJob>>, TError,{jobId: string;data: BodyType<TelegramJobUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTelegramJob>>, TError,{jobId: string;data: BodyType<TelegramJobUpdate>}, TContext> => {
+
+const mutationKey = ['updateTelegramJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTelegramJob>>, {jobId: string;data: BodyType<TelegramJobUpdate>}> = (props) => {
+          const {jobId,data} = props ?? {};
+
+          return  updateTelegramJob(jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTelegramJobMutationResult = NonNullable<Awaited<ReturnType<typeof updateTelegramJob>>>
+    export type UpdateTelegramJobMutationBody = BodyType<TelegramJobUpdate>
+    export type UpdateTelegramJobMutationError = ErrorType<NotFoundResponse>
+
+    /**
+ * @summary Update the persisted job status
+ */
+export const useUpdateTelegramJob = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTelegramJob>>, TError,{jobId: string;data: BodyType<TelegramJobUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTelegramJob>>,
+        TError,
+        {jobId: string;data: BodyType<TelegramJobUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateTelegramJobMutationOptions(options));
+    }
+
+export const getDeleteTelegramJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/jobs/${jobId}`
+}
+
+/**
+ * @summary Delete a persisted Telegram check job
+ */
+export const deleteTelegramJob = async (jobId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteTelegramJobUrl(jobId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteTelegramJobMutationOptions = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTelegramJob>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteTelegramJob>>, TError,{jobId: string}, TContext> => {
+
+const mutationKey = ['deleteTelegramJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteTelegramJob>>, {jobId: string}> = (props) => {
+          const {jobId} = props ?? {};
+
+          return  deleteTelegramJob(jobId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteTelegramJobMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTelegramJob>>>
+
+    export type DeleteTelegramJobMutationError = ErrorType<NotFoundResponse>
+
+    /**
+ * @summary Delete a persisted Telegram check job
+ */
+export const useDeleteTelegramJob = <TError = ErrorType<NotFoundResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTelegramJob>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteTelegramJob>>,
+        TError,
+        {jobId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteTelegramJobMutationOptions(options));
     }
 

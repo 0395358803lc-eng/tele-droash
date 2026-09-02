@@ -95,12 +95,108 @@ export interface TelegramCheckResponse {
   results: TelegramCheckResult[];
 }
 
+export type TelegramJobStatus = typeof TelegramJobStatus[keyof typeof TelegramJobStatus];
+
+
+export const TelegramJobStatus = {
+  running: 'running',
+  paused: 'paused',
+  queued: 'queued',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface TelegramJob {
+  id: string;
+  accountId: string;
+  name: string;
+  status: TelegramJobStatus;
+  total: number;
+  processed: number;
+  found: number;
+  notDiscoverable: number;
+  errors: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TelegramJobResultStatus = typeof TelegramJobResultStatus[keyof typeof TelegramJobResultStatus];
+
+
+export const TelegramJobResultStatus = {
+  found: 'found',
+  not_discoverable: 'not_discoverable',
+  invalid: 'invalid',
+  error: 'error',
+  rate_limited: 'rate_limited',
+} as const;
+
+export interface TelegramJobResult {
+  phone: string;
+  status: TelegramJobResultStatus;
+  /** @nullable */
+  username?: string | null;
+  /** @nullable */
+  displayName?: string | null;
+  /** @nullable */
+  telegramId?: string | null;
+  /** @nullable */
+  lastOnline?: string | null;
+  /** @nullable */
+  errorMessage?: string | null;
+  /** @nullable */
+  retryAfterSeconds?: number | null;
+  checkedAt: string;
+}
+
+export type TelegramJobWithResults = TelegramJob & {
+  results: TelegramJobResult[];
+};
+
+export interface TelegramJobInput {
+  accountId: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     */
+  results: TelegramJobResult[];
+}
+
+export type TelegramJobUpdateStatus = typeof TelegramJobUpdateStatus[keyof typeof TelegramJobUpdateStatus];
+
+
+export const TelegramJobUpdateStatus = {
+  running: 'running',
+  paused: 'paused',
+  queued: 'queued',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface TelegramJobUpdate {
+  status: TelegramJobUpdateStatus;
+}
+
 /**
  * Invalid request
  */
 export type BadRequestResponse = Error;
 
+/**
+ * Resource not found
+ */
+export type NotFoundResponse = Error;
+
 export type ListTelegramAccounts200 = {
   accounts: TelegramAccount[];
+};
+
+export type ListTelegramJobs200 = {
+  jobs: TelegramJob[];
 };
 

@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  getListTelegramJobsQueryKey,
+  useCreateTelegramJob,
+  useDeleteTelegramJob,
+  useGetTelegramJob,
+  useListTelegramJobs,
+  useUpdateTelegramJob,
+} from '@workspace/api-client-react';
+import type { TelegramJobResult, TelegramJobWithResults } from '@workspace/api-client-react';
 import type { Job, JobWithResults, Result, Settings } from '@/lib/types';
 
-const JOBS_KEY = 'telegram-checker:jobs-v1';
 const SETTINGS_KEY = 'telegram-checker:settings-v1';
-const OLD_LOCALIZED_JOBS_KEY = 'telegram-checker:sandbox-jobs-vietnamese';
-const OLD_LOCALIZED_SETTINGS_KEY = 'telegram-checker:sandbox-settings-vietnamese';
-const LEGACY_JOBS_KEY = 'telegram-checker:sandbox-jobs';
-const LEGACY_SETTINGS_KEY = 'telegram-checker:sandbox-settings';
 
 const emptySettings: Settings = {
   connectionConfigured: false,
@@ -16,74 +21,120 @@ const emptySettings: Settings = {
   autoResume: true,
 };
 
+function mapResult(result: TelegramJobResult): Result {
+  return {
+    phone: result.phone,
+    status: result.status,
+    username: result.username ?? null,
+    displayName: result.displayName ?? null,
+    telegramId: result.telegramId ?? null,
+    lastOnline: result.lastOnline ?? null,
+    errorMessage: result.errorMessage ?? null,
+    retryAfterSeconds: result.retryAfterSeconds ?? null,
+    checkedAt: result.checkedAt,
+  };
+}
+
+function mapJob(job: TelegramJobWithResults): JobWithResults {
+  return { ...job, results: job.results.map(mapResult) };
+}
+
+function mapSummary(job: Job): JobWithResults {
+  return { ...job, results: [] };
+}
+
+function getApiErrorMessage(error: unknown) {
+  const data = (error as { data?: { message?: string } } | undefined)?.data;
+  return data?.message ?? (error instanceof Error ? error.message : 'Không thể cập nhật tác vụ.');
+}
+
 export function useSandbox() {
-  const [jobs, setJobs] = useState<JobWithResults[]>([]);
+  const queryClient = useQueryClient();
+  const jobsQuery = useListTelegramJobs({
+    query: { queryKey: getListTelegramJobsQueryKey(), refetchOnWindowFocus: true, staleTime: 15000 },
+  });
+  const createMutation = useCreateTelegramJob();
+  const deleteMutation = useDeleteTelegramJob();
+  const updateMutation = useUpdateTelegramJob();
   const [settings, setSettings] = useState<Settings>(emptySettings);
-  const [hydrated, setHydrated] = useState(false);
+  const [settingsHydrated, setSettingsHydrated] = useState(false);
 
   useEffect(() => {
-    // Production must never rehydrate the old demo records. Remove both the
-    // localized and legacy keys so a previous browser session cannot restore
-    // sample jobs after deployment.
-    window.localStorage.removeItem(OLD_LOCALIZED_JOBS_KEY);
-    window.localStorage.removeItem(OLD_LOCALIZED_SETTINGS_KEY);
-    window.localStorage.removeItem(LEGACY_JOBS_KEY);
-    window.localStorage.removeItem(LEGACY_SETTINGS_KEY);
-    setJobs([]);
-    setSettings(emptySettings);
-    setHydrated(true);
+    try {
+      const saved = window.localStorage.getItem(SETTINGS_KEY);
+      if (saved) setSettings({ ...emptySettings, ...JSON.parse(saved) });
+    } catch {
+      setSettings(emptySettings);
+    } finally {
+      setSettingsHydrated(true);
+    }
   }, []);
 
   useEffect(() => {
-    if (hydrated) window.localStorage.setItem(JOBS_KEY, JSON.stringify(jobs));
-  }, [hydrated, jobs]);
+    if (settingsHydrated) window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }, [settings, settingsHydrated]);
 
-  useEffect(() => {
-    if (hydrated) window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  }, [hydrated, settings]);
+  const jobs = useMemo(
+    () => (jobsQuery.data?.jobs ?? []).map(mapSummary),
+    [jobsQuery.data],
+  );
 
-  const updateJob = useCallback((id: string, updates: Partial<Job>) => {
-    setJobs((current) => current.map((job) => job.id === id ? { ...job, ...updates, updatedAt: new Date().toISOString() } : job));
-  }, []);
+  const addJob = useCallback(async (accountId: string, name: string, checkedResults: TelegramJobResult[]) => {
+    const created = await createMutation.mutateAsync({
+      data: { accountId, name, results: checkedResults },
+    });
+    await queryClient.invalidateQueries({ queryKey: getListTelegramJobsQueryKey() });
+    return mapJob(created);
+  }, [createMutation, queryClient]);
 
-  const toggleJob = useCallback((id: string) => {
-    setJobs((current) => current.map((job) => {
-      if (job.id !== id) return job;
-      return { ...job, status: job.status === 'running' ? 'paused' : 'running', updatedAt: new Date().toISOString() };
-    }));
-  }, []);
+  const deleteJob = useCallback(async (id: string) => {
+    await deleteMutation.mutateAsync({ jobId: id });
+    await queryClient.invalidateQueries({ queryKey: getListTelegramJobsQueryKey() });
+  }, [deleteMutation, queryClient]);
 
-  const addJob = useCallback((name: string, phones: string[], checkedResults: Array<{ phone: string; status: Result['status']; username?: string | null; displayName?: string | null; telegramId?: string | null; lastOnline?: string | null; checkedAt: string }> = []) => {
-    const now = new Date().toISOString();
-    const results: Result[] = checkedResults.length ? checkedResults.map((result) => ({ phone: result.phone, status: result.status, username: result.username ?? null, displayName: result.displayName ?? null, telegramId: result.telegramId ?? null, lastOnline: result.lastOnline ?? null, checkedAt: result.checkedAt })) : phones.map((phone) => ({ phone, status: 'error' as const, username: null, displayName: null, telegramId: null, lastOnline: null, checkedAt: now }));
-    const found = results.filter((result) => result.status === 'found').length;
-    const notDiscoverable = results.filter((result) => result.status === 'not_discoverable').length;
-    const job: JobWithResults = {
-      id: `job-${Date.now()}`,
-      name,
-      status: 'completed',
-      total: phones.length,
-      processed: results.length,
-      found,
-      notDiscoverable,
-      errors: results.length - found - notDiscoverable,
-      createdAt: now,
-      updatedAt: now,
-      results,
-    };
-    setJobs((current) => [job, ...current]);
-    return job;
-  }, []);
+  const updateJob = useCallback(async (id: string, updates: Partial<Job>) => {
+    if (!updates.status) return;
+    await updateMutation.mutateAsync({ jobId: id, data: { status: updates.status } });
+    await queryClient.invalidateQueries({ queryKey: getListTelegramJobsQueryKey() });
+  }, [queryClient, updateMutation]);
 
-  const deleteJob = useCallback((id: string) => setJobs((current) => current.filter((job) => job.id !== id)), []);
-  const resetSandbox = useCallback(() => {
-    setJobs([]);
-    setSettings(emptySettings);
-  }, []);
+  const toggleJob = useCallback(async (id: string) => {
+    const current = jobs.find((job) => job.id === id);
+    if (!current) return;
+    await updateJob(id, { status: current.status === 'running' ? 'paused' : 'running' });
+  }, [jobs, updateJob]);
+
+  const resetSandbox = useCallback(() => setSettings(emptySettings), []);
   const updateSettings = useCallback((updates: Partial<Settings>) => setSettings((current) => ({ ...current, ...updates })), []);
   const selectedJob = useMemo(() => jobs[0], [jobs]);
 
-  return { jobs, settings, hydrated, selectedJob, updateJob, toggleJob, addJob, deleteJob, resetSandbox, updateSettings };
+  return {
+    jobs,
+    settings,
+    hydrated: !jobsQuery.isLoading && settingsHydrated,
+    selectedJob,
+    updateJob,
+    toggleJob,
+    addJob,
+    deleteJob,
+    resetSandbox,
+    updateSettings,
+    error: jobsQuery.error ? getApiErrorMessage(jobsQuery.error) : null,
+  };
+}
+
+export function usePersistentJob(jobId?: string) {
+  const query = useGetTelegramJob(jobId ?? '', {
+    query: {
+      queryKey: ["/api/jobs", jobId ?? ''] as const,
+      enabled: Boolean(jobId),
+      refetchOnWindowFocus: true,
+    },
+  });
+  return {
+    ...query,
+    data: query.data ? mapJob(query.data) : undefined,
+  };
 }
 
 export function exportJson(job: JobWithResults, filename = 'telegram-check-job.json') {

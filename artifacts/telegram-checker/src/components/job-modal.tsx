@@ -6,7 +6,7 @@ import { Button, Label, TextInput } from '@/components/ui-primitives';
 
 interface JobModalProps {
   onClose: () => void;
-  onCreate: (name: string, phones: string[], results: TelegramCheckResult[]) => Promise<void> | void;
+  onCreate: (accountId: string, name: string, results: TelegramCheckResult[]) => Promise<void> | void;
 }
 
 export function JobModal({ onClose, onCreate }: JobModalProps) {
@@ -30,7 +30,7 @@ export function JobModal({ onClose, onCreate }: JobModalProps) {
     setError('');
     try {
       const response = await checkTelegramAccountPhones(selectedAccountId, { phones });
-      await onCreate(name.trim(), phones, response.results);
+      await onCreate(selectedAccountId, name.trim(), response.results);
       onClose();
     } catch (requestError) {
       const data = (requestError as { data?: { message?: string } } | undefined)?.data;

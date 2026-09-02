@@ -3,7 +3,7 @@ import { CalendarClock, FileJson, FileSpreadsheet, Filter, Pause, Play, Plus, Se
 import { AppShell } from '@/components/app-shell';
 import { JobModal } from '@/components/job-modal';
 import { Button, EmptyState, Panel, ProgressBar, StatusPill, TextInput } from '@/components/ui-primitives';
-import { exportCsv, exportJson, useSandbox } from '@/hooks/use-sandbox';
+import { exportCsv, exportJson, usePersistentJob, useSandbox } from '@/hooks/use-sandbox';
 import type { JobWithResults, ResultStatus } from '@/lib/types';
 
 function formatDate(value: string) {
@@ -24,14 +24,16 @@ export default function Jobs() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedId, setSelectedId] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const selected = useMemo(() => jobs.find((job) => job.id === selectedId) ?? jobs[0], [jobs, selectedId]);
+  const selectedSummary = useMemo(() => jobs.find((job) => job.id === selectedId) ?? jobs[0], [jobs, selectedId]);
+  const selectedDetail = usePersistentJob(selectedSummary?.id);
+  const selected = selectedDetail.data ?? selectedSummary;
   const filtered = useMemo(() => jobs.filter((job) => job.name.toLowerCase().includes(query.toLowerCase()) && (statusFilter === 'all' || job.status === statusFilter)), [jobs, query, statusFilter]);
 
   if (!hydrated) return <AppShell><div className="space-y-5"><div className="h-10 w-48 animate-pulse rounded bg-[hsl(var(--muted))]" /><div className="grid gap-5 lg:grid-cols-[.75fr_1.25fr]"><div className="h-[590px] animate-pulse rounded-lg bg-[hsl(var(--muted))]" /><div className="h-[590px] animate-pulse rounded-lg bg-[hsl(var(--muted))]" /></div></div></AppShell>;
 
   function removeSelected() {
-    if (selected && window.confirm(`Xóa tác vụ "${selected.name}" khỏi trình duyệt này?`)) {
-      deleteJob(selected.id);
+    if (selected && window.confirm(`Xóa tác vụ "${selected.name}" khỏi không gian làm việc này?`)) {
+      deleteJob(selected.id).catch(() => window.alert('Không thể xóa tác vụ. Hãy thử lại.'));
       setSelectedId('');
     }
   }
@@ -49,6 +51,6 @@ export default function Jobs() {
         </Panel> : <Panel><EmptyState title="Chưa chọn tác vụ" detail="Chọn một tác vụ trong danh sách để xem chi tiết lần chạy." /></Panel>}
       </div>
     </div>
-     {showModal && <JobModal onClose={() => setShowModal(false)} onCreate={(name, phones, results) => { const job = addJob(name, phones, results); setSelectedId(job.id); setShowModal(false); }} />}
+      {showModal && <JobModal onClose={() => setShowModal(false)} onCreate={async (accountId, name, results) => { const job = await addJob(accountId, name, results); setSelectedId(job.id); setShowModal(false); }} />}
   </AppShell>;
 }

@@ -3,6 +3,7 @@ export type ResultStatus = 'found' | 'not_discoverable' | 'invalid' | 'error' | 
 
 export interface Job {
   id: string;
+  accountId: string;
   name: string;
   status: JobStatus;
   total: number;
@@ -21,6 +22,8 @@ export interface Result {
   displayName: string | null;
   telegramId: string | null;
   lastOnline: string | null;
+  errorMessage: string | null;
+  retryAfterSeconds: number | null;
   checkedAt: string;
 }
 
