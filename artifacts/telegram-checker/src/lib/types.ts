@@ -1,5 +1,5 @@
 export type JobStatus = 'running' | 'paused' | 'queued' | 'completed' | 'failed';
-export type ResultStatus = 'found' | 'not_discoverable' | 'invalid' | 'error';
+export type ResultStatus = 'found' | 'not_discoverable' | 'invalid' | 'error' | 'rate_limited';
 
 export interface Job {
   id: string;

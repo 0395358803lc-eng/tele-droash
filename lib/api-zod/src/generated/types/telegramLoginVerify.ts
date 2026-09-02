@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface TelegramLoginVerify {
+  /** @minLength 4 */
+  code: string;
+  /** @minLength 1 */
+  password?: string;
 }

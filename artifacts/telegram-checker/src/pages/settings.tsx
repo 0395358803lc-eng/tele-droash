@@ -1,42 +1,179 @@
-import { useEffect, useState } from 'react';
-import { Check, ChevronDown, CircleHelp, RotateCcw, Save, ShieldCheck, SlidersHorizontal, TimerReset, WifiOff } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Clock3, KeyRound, LoaderCircle, LockKeyhole, Phone, Plus, RefreshCw, ShieldCheck, Smartphone, Trash2, UserRound, Wifi, WifiOff } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link } from 'wouter';
+import { completeTelegramAccountLogin, deleteTelegramAccount, refreshTelegramAccountStatus, startTelegramAccountLogin, useListTelegramAccounts } from '@workspace/api-client-react';
+import type { TelegramAccount } from '@workspace/api-client-react';
 import { AppShell } from '@/components/app-shell';
-import { Button, Label, Panel, TextInput } from '@/components/ui-primitives';
+import { Button, EmptyState, Label, Panel, Skeleton, TextInput } from '@/components/ui-primitives';
 import { useSandbox } from '@/hooks/use-sandbox';
 
-const regions = [
-  { value: 'VN', label: 'Việt Nam (+84)' },
-  { value: 'US', label: 'Hoa Kỳ (+1)' },
-  { value: 'GB', label: 'Vương quốc Anh (+44)' },
-  { value: 'FR', label: 'Pháp (+33)' },
-  { value: 'DE', label: 'Đức (+49)' },
-  { value: 'AU', label: 'Úc (+61)' },
-  { value: 'JP', label: 'Nhật Bản (+81)' },
-];
+type LoginStep = 'start' | 'code' | 'twoFactor';
+
+function apiMessage(error: unknown) {
+  const data = (error as { data?: { message?: string } } | undefined)?.data;
+  return data?.message ?? (error instanceof Error ? error.message : 'Có lỗi xảy ra. Hãy thử lại.');
+}
+
+function maskPhone(phone: string) {
+  return phone.length > 7 ? `${phone.slice(0, -6)}••••${phone.slice(-2)}` : phone;
+}
+
+const statusConfig: Record<TelegramAccount['status'], { label: string; className: string; icon: typeof Wifi }> = {
+  connected: { label: 'Đã kết nối', className: 'bg-[hsl(162_45%_88%)] text-[hsl(170_48%_29%)]', icon: Wifi },
+  awaiting_code: { label: 'Chờ mã OTP', className: 'bg-[hsl(var(--accent)/.2)] text-[hsl(29_58%_31%)]', icon: Clock3 },
+  awaiting_2fa: { label: 'Chờ mật khẩu 2 bước', className: 'bg-[hsl(var(--accent)/.2)] text-[hsl(29_58%_31%)]', icon: LockKeyhole },
+  disconnected: { label: 'Đã ngắt kết nối', className: 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]', icon: WifiOff },
+  rate_limited: { label: 'Đang bị giới hạn', className: 'bg-[hsl(var(--accent)/.2)] text-[hsl(29_58%_31%)]', icon: Clock3 },
+  failed: { label: 'Thất bại', className: 'bg-[hsl(var(--destructive)/.12)] text-[hsl(var(--destructive))]', icon: AlertTriangle },
+  disabled: { label: 'Đã vô hiệu hóa', className: 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]', icon: WifiOff },
+};
+
+function AccountStatus({ status }: { status: TelegramAccount['status'] }) {
+  const config = statusConfig[status];
+  const Icon = config.icon;
+  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${config.className}`}><Icon size={12} /> {config.label}</span>;
+}
 
 export default function Settings() {
-  const { settings, hydrated, updateSettings, resetSandbox } = useSandbox();
-  const [draft, setDraft] = useState(settings);
-  const [saved, setSaved] = useState(false);
+  const queryClient = useQueryClient();
+  const accountsQuery = useListTelegramAccounts({ query: { queryKey: ['/api/telegram-accounts'], refetchInterval: 30000, refetchOnWindowFocus: true } });
+  const { settings, hydrated, updateSettings } = useSandbox();
+  const [step, setStep] = useState<LoginStep>('start');
+  const [pendingAccount, setPendingAccount] = useState<TelegramAccount | null>(null);
+  const [apiId, setApiId] = useState('');
+  const [apiHash, setApiHash] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  useEffect(() => {
-    if (hydrated) setDraft(settings);
-  }, [hydrated]);
+  const accounts = accountsQuery.data?.accounts ?? [];
+  const connectedCount = useMemo(() => accounts.filter((account) => account.status === 'connected').length, [accounts]);
 
-  if (!hydrated) return <AppShell><div className="space-y-5"><div className="h-10 w-48 animate-pulse rounded bg-[hsl(var(--muted))]" /><div className="h-52 animate-pulse rounded-lg bg-[hsl(var(--muted))]" /><div className="h-80 animate-pulse rounded-lg bg-[hsl(var(--muted))]" /></div></AppShell>;
-
-  function saveSettings() {
-    updateSettings({ ...draft, maxAttempts: Math.max(1, Math.min(10, Number(draft.maxAttempts))), minRequestInterval: Math.max(.2, Number(draft.minRequestInterval)) });
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2200);
+  async function beginLogin(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await startTelegramAccountLogin({ apiId, apiHash, phoneNumber });
+      setPendingAccount(response.account);
+      setStep('code');
+      setCode('');
+      setNotice('Telegram đã gửi mã đăng nhập. Kiểm tra ứng dụng Telegram trên điện thoại.');
+      await queryClient.invalidateQueries({ queryKey: ['/api/telegram-accounts'] });
+    } catch (requestError) {
+      setError(apiMessage(requestError));
+    } finally {
+      setBusy(false);
+    }
   }
 
+  async function finishLogin(event: React.FormEvent) {
+    event.preventDefault();
+    if (!pendingAccount) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const account = await completeTelegramAccountLogin(pendingAccount.id, { code, password: step === 'twoFactor' ? password : undefined });
+      setPendingAccount(account);
+      if (account.status === 'awaiting_2fa') {
+        setStep('twoFactor');
+        setNotice('Mã đúng. Tài khoản này bật xác minh hai bước, hãy nhập mật khẩu Telegram.');
+      } else {
+        setStep('start');
+        setPendingAccount(null);
+        setApiId('');
+        setApiHash('');
+        setPhoneNumber('');
+        setCode('');
+        setPassword('');
+        setNotice('Đã kết nối tài khoản Telegram. Session được lưu mã hóa phía máy chủ.');
+      }
+      await queryClient.invalidateQueries({ queryKey: ['/api/telegram-accounts'] });
+    } catch (requestError) {
+      setError(apiMessage(requestError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refreshAccount(account: TelegramAccount) {
+    setRefreshingId(account.id);
+    setError('');
+    try {
+      await refreshTelegramAccountStatus(account.id);
+      await queryClient.invalidateQueries({ queryKey: ['/api/telegram-accounts'] });
+    } catch (requestError) {
+      setError(apiMessage(requestError));
+    } finally {
+      setRefreshingId(null);
+    }
+  }
+
+  async function removeAccount(account: TelegramAccount) {
+    if (!window.confirm(`Xóa tài khoản ${maskPhone(account.phoneNumber)} và session đã lưu?`)) return;
+    setRefreshingId(account.id);
+    setError('');
+    try {
+      await deleteTelegramAccount(account.id);
+      await queryClient.invalidateQueries({ queryKey: ['/api/telegram-accounts'] });
+      setNotice('Đã xóa hồ sơ và session Telegram khỏi máy chủ.');
+    } catch (requestError) {
+      setError(apiMessage(requestError));
+    } finally {
+      setRefreshingId(null);
+    }
+  }
+
+  if (!hydrated || accountsQuery.isLoading) return <AppShell><div className="space-y-6"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /><Skeleton className="h-56" /></div></AppShell>;
+
   return <AppShell>
-    <div className="max-w-4xl space-y-6 pb-20">
-      <section className="animate-rise"><div className="font-mono text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">Điều khiển không gian làm việc</div><h1 className="mt-1 font-display text-3xl font-semibold tracking-[-.04em]">Cài đặt</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Đặt các mặc định an toàn cho trình kiểm tra. Mọi thiết lập chỉ được lưu trong trình duyệt này cho đến khi bộ máy thật được kết nối.</p></section>
-      <Panel className="overflow-hidden animate-rise animate-rise-delay-1"><div className="flex items-start gap-4 border-b border-[hsl(var(--border))] px-5 py-5"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[hsl(var(--accent)/.19)] text-[hsl(29_58%_31%)]"><WifiOff size={17} /></div><div className="flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="font-display text-base font-semibold">Trạng thái kết nối</h2><span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--accent)/.18)] px-2.5 py-1 text-[10px] font-bold text-[hsl(29_58%_31%)]"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--accent))]" /> Chưa kết nối</span></div><p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Relaycheck hiện là giao diện web bao quanh bộ máy dòng lệnh Python. Chế độ mẫu này không lưu hoặc sử dụng thông tin đăng nhập Telegram.</p></div></div><div className="flex flex-col justify-between gap-3 bg-[hsl(var(--muted)/.35)] px-5 py-4 sm:flex-row sm:items-center"><div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><ShieldCheck size={14} className="text-[hsl(var(--primary))]" /> Hồ sơ cấu hình: <strong className="font-mono text-[hsl(var(--foreground))]">{draft.connectionConfigured ? 'sẵn sàng' : 'chưa thiết lập'}</strong></div><Button variant="outline" onClick={() => { setDraft((current) => ({ ...current, connectionConfigured: !current.connectionConfigured })); setSaved(false); }} data-testid="button-toggle-connection-profile">{draft.connectionConfigured ? 'Đánh dấu chưa hoàn tất' : 'Đánh dấu sẵn sàng'}</Button></div></Panel>
-      <Panel className="animate-rise animate-rise-delay-2"><div className="border-b border-[hsl(var(--border))] px-5 py-5"><div className="flex items-center gap-2"><SlidersHorizontal size={16} className="text-[hsl(var(--primary))]" /><h2 className="font-display text-base font-semibold">An toàn khi kiểm tra</h2></div><p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">Cơ chế gửi yêu cầu thận trọng cho các tác vụ mẫu chạy lâu.</p></div><div className="grid gap-5 px-5 py-5 sm:grid-cols-2"><div><Label htmlFor="phone-region">Khu vực số điện thoại</Label><div className="relative"><select id="phone-region" value={draft.phoneRegion} onChange={(event) => setDraft({ ...draft, phoneRegion: event.target.value })} className="h-10 w-full appearance-none rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-3 pr-9 text-sm outline-none focus:border-[hsl(var(--primary))]" data-testid="select-phone-region">{regions.map((region) => <option key={region.value} value={region.value}>{region.label}</option>)}</select><ChevronDown size={15} className="pointer-events-none absolute right-3 top-3 text-[hsl(var(--muted-foreground))]" /></div><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Dùng khi số nhập vào không có mã quốc gia.</p></div><div><Label htmlFor="max-attempts">Số lần thử tối đa</Label><TextInput id="max-attempts" type="number" min={1} max={10} value={draft.maxAttempts} onChange={(event) => setDraft({ ...draft, maxAttempts: Number(event.target.value) })} data-testid="input-max-attempts" /><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Giới hạn thử lại cho mỗi số, từ 1 đến 10.</p></div><div><Label htmlFor="request-interval">Khoảng cách tối thiểu giữa các yêu cầu</Label><div className="relative"><TextInput id="request-interval" type="number" min={.2} step={.1} value={draft.minRequestInterval} onChange={(event) => setDraft({ ...draft, minRequestInterval: Number(event.target.value) })} className="pr-12" data-testid="input-request-interval" /><span className="pointer-events-none absolute right-3 top-3 font-mono text-[10px] text-[hsl(var(--muted-foreground))]">giây</span></div><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Thời gian chờ giữa các yêu cầu; giá trị thấp sẽ ít thận trọng hơn.</p></div><div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] p-3.5"><label className="flex cursor-pointer items-start gap-3"><input type="checkbox" checked={draft.autoResume} onChange={(event) => setDraft({ ...draft, autoResume: event.target.checked })} className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]" data-testid="checkbox-auto-resume" /><span><span className="block text-sm font-semibold">Tự động tiếp tục tác vụ đã tạm dừng</span><span className="mt-1 block text-[11px] leading-relaxed text-[hsl(var(--muted-foreground))]">Cho phép bộ máy tiếp tục sau một lần gián đoạn có thể khôi phục.</span></span></label></div></div><div className="flex flex-col justify-between gap-3 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/.35)] px-5 py-4 sm:flex-row sm:items-center"><span className="text-xs text-[hsl(var(--muted-foreground))]">Thay đổi áp dụng cho các lần chạy bộ máy mới.</span><Button onClick={saveSettings} data-testid="button-save-settings">{saved ? <><Check size={14} /> Đã lưu cục bộ</> : <><Save size={14} /> Lưu cài đặt</>}</Button></div></Panel>
-      <Panel className="animate-rise animate-rise-delay-3"><div className="flex flex-col justify-between gap-4 px-5 py-5 sm:flex-row sm:items-center"><div className="flex items-start gap-3"><div className="mt-0.5 text-[hsl(var(--muted-foreground))]"><TimerReset size={17} /></div><div><h2 className="font-display text-sm font-semibold">Đặt lại dữ liệu chế độ mẫu</h2><p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Khôi phục các tác vụ mẫu và thiết lập an toàn ban đầu trong trình duyệt này.</p></div></div><Button variant="outline" onClick={() => { if (window.confirm('Khôi phục các bản ghi mẫu ban đầu?')) resetSandbox(); }} data-testid="button-reset-sandbox"><RotateCcw size={14} /> Khôi phục dữ liệu mẫu</Button></div><div className="flex items-center gap-2 border-t border-[hsl(var(--border))] px-5 py-3 text-[11px] text-[hsl(var(--muted-foreground))]"><CircleHelp size={13} /> Thao tác này chỉ ảnh hưởng đến dữ liệu cục bộ trong trình duyệt.</div></Panel>
+    <div className="max-w-5xl space-y-6 pb-20">
+      <section className="animate-rise">
+        <div className="font-mono text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">Kết nối vận hành</div>
+        <h1 className="mt-1 font-display text-3xl font-semibold tracking-[-.04em]">Tài khoản Telegram</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Thêm nhiều tài khoản để chạy các lần kiểm tra thực tế. Mỗi tài khoản có session riêng và không thể bị hai worker sử dụng đồng thời.</p>
+      </section>
+
+      {(error || notice) && <div className={`flex items-start gap-3 rounded-md border px-4 py-3 text-xs leading-relaxed ${error ? 'border-[hsl(var(--destructive)/.35)] bg-[hsl(var(--destructive)/.07)] text-[hsl(var(--destructive))]' : 'border-[hsl(var(--primary)/.3)] bg-[hsl(var(--primary)/.07)] text-[hsl(var(--foreground))]'}`} role="status">{error ? <AlertTriangle size={16} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-[hsl(var(--primary))]" />}<span>{error || notice}</span><button className="ml-auto font-bold opacity-70" onClick={() => { setError(''); setNotice(''); }} aria-label="Đóng thông báo">×</button></div>}
+
+      <Panel className="overflow-hidden animate-rise animate-rise-delay-1">
+        <div className="flex items-start gap-4 border-b border-[hsl(var(--border))] px-5 py-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[hsl(var(--primary)/.12)] text-[hsl(var(--primary))]"><Smartphone size={17} /></div>
+          <div><div className="flex flex-wrap items-center gap-2"><h2 className="font-display text-base font-semibold">{step === 'start' ? 'Thêm tài khoản Telegram' : step === 'code' ? 'Xác minh mã đăng nhập' : 'Xác minh hai bước'}</h2>{step !== 'start' && pendingAccount && <AccountStatus status={pendingAccount.status} />}</div><p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">API ID và API Hash đến từ ứng dụng Telegram của bạn trên my.telegram.org. Chúng chỉ được gửi đến server qua kết nối API; API Hash không bao giờ được hiển thị lại.</p></div>
+        </div>
+        {step === 'start' ? <form onSubmit={beginLogin} className="grid gap-5 px-5 py-5 sm:grid-cols-2">
+          <div><Label htmlFor="telegram-api-id">API ID</Label><TextInput id="telegram-api-id" inputMode="numeric" value={apiId} onChange={(event) => setApiId(event.target.value)} placeholder="Ví dụ: 12345678" autoComplete="off" required data-testid="input-telegram-api-id" /><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Số API ID trong my.telegram.org/apps.</p></div>
+          <div><Label htmlFor="telegram-api-hash">API Hash</Label><TextInput id="telegram-api-hash" type="password" value={apiHash} onChange={(event) => setApiHash(event.target.value)} placeholder="Dán API Hash" autoComplete="off" minLength={16} required data-testid="input-telegram-api-hash" /><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Không lưu trong trình duyệt sau khi rời trang.</p></div>
+          <div><Label htmlFor="telegram-phone">Số điện thoại Telegram</Label><div className="relative"><Phone size={15} className="pointer-events-none absolute left-3 top-3 text-[hsl(var(--muted-foreground))]" /><TextInput id="telegram-phone" className="pl-9" value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} placeholder="+84912345678" autoComplete="tel" required data-testid="input-telegram-phone" /></div><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Dùng định dạng quốc tế, gồm mã quốc gia.</p></div>
+          <div className="flex items-end justify-end"><Button type="submit" disabled={busy} data-testid="button-start-telegram-login">{busy ? <><LoaderCircle size={15} className="animate-spin" /> Đang gửi mã…</> : <><Plus size={15} /> Gửi mã đăng nhập</>}</Button></div>
+        </form> : <form onSubmit={finishLogin} className="space-y-5 px-5 py-5">
+          <div className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.35)] px-4 py-3 text-xs"><span className="text-[hsl(var(--muted-foreground))]">Tài khoản đang xác minh: </span><strong className="font-mono">{pendingAccount ? maskPhone(pendingAccount.phoneNumber) : ''}</strong></div>
+          <div className="max-w-md"><Label htmlFor="telegram-code">Mã Telegram</Label><TextInput id="telegram-code" inputMode="numeric" value={code} onChange={(event) => setCode(event.target.value)} placeholder="Nhập mã gồm 5 chữ số" autoComplete="one-time-code" required data-testid="input-telegram-code" /><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Không chia sẻ mã này với bất kỳ ai.</p></div>
+          {step === 'twoFactor' && <div className="max-w-md"><Label htmlFor="telegram-password">Mật khẩu xác minh hai bước</Label><div className="relative"><KeyRound size={15} className="pointer-events-none absolute left-3 top-3 text-[hsl(var(--muted-foreground))]" /><TextInput id="telegram-password" type="password" className="pl-9" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Mật khẩu Telegram" autoComplete="current-password" required data-testid="input-telegram-password" /></div></div>}
+          <div className="flex flex-wrap gap-2"><Button type="submit" disabled={busy} data-testid="button-submit-telegram-login">{busy ? <><LoaderCircle size={15} className="animate-spin" /> Đang xác minh…</> : <><CheckCircle2 size={15} /> {step === 'twoFactor' ? 'Xác minh và kết nối' : 'Xác minh mã'}</>}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => { setStep('start'); setPendingAccount(null); setCode(''); setPassword(''); setError(''); }} data-testid="button-cancel-telegram-login">Hủy</Button></div>
+        </form>}
+        <div className="flex items-center gap-2 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] px-5 py-3 text-[11px] text-[hsl(var(--muted-foreground))]"><LockKeyhole size={13} className="text-[hsl(var(--primary))]" /> Session và thông tin API được mã hóa ở server bằng secret của workspace; trình duyệt chỉ nhận trạng thái đã che.</div>
+      </Panel>
+
+      <Panel className="overflow-hidden animate-rise animate-rise-delay-2">
+        <div className="flex flex-col justify-between gap-3 border-b border-[hsl(var(--border))] px-5 py-5 sm:flex-row sm:items-center"><div><div className="flex items-center gap-2"><h2 className="font-display text-base font-semibold">Các tài khoản đã thêm</h2><span className="rounded-full bg-[hsl(var(--primary)/.1)] px-2 py-0.5 font-mono text-[10px] font-bold text-[hsl(var(--primary))]">{connectedCount} kết nối</span></div><p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">Danh sách này không hiển thị API Hash hoặc session.</p></div><Button variant="outline" onClick={() => accountsQuery.refetch()} disabled={accountsQuery.isFetching} data-testid="button-refresh-telegram-accounts">{accountsQuery.isFetching ? <LoaderCircle size={14} className="animate-spin" /> : <RefreshCw size={14} />} Làm mới</Button></div>
+        {accounts.length ? <div className="divide-y divide-[hsl(var(--border))]">{accounts.map((account) => <div key={account.id} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`telegram-account-${account.id}`}><div className="flex min-w-0 items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-primary))]"><UserRound size={16} /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-semibold">{maskPhone(account.phoneNumber)}</span><AccountStatus status={account.status} /></div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[hsl(var(--muted-foreground))]"><span>{account.displayName || 'Chưa có tên hiển thị'}</span>{account.username && <span className="font-mono">@{account.username}</span>}{account.lastCheckedAt && <span>Kiểm tra {new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(account.lastCheckedAt))}</span>}</div>{account.lastError && <p className="mt-2 text-[11px] text-[hsl(var(--destructive))]">{account.lastError}</p>}</div></div><div className="flex shrink-0 items-center gap-2"><Button variant="outline" onClick={() => refreshAccount(account)} disabled={refreshingId === account.id} data-testid={`button-refresh-account-${account.id}`}>{refreshingId === account.id ? <LoaderCircle size={14} className="animate-spin" /> : <RefreshCw size={14} />} Kiểm tra</Button><Button variant="quiet" className="text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))]" onClick={() => removeAccount(account)} disabled={refreshingId === account.id} data-testid={`button-delete-account-${account.id}`}><Trash2 size={14} /> Xóa</Button></div></div>)}</div> : <EmptyState title="Chưa có tài khoản Telegram" detail="Thêm tài khoản đầu tiên ở biểu mẫu phía trên để bắt đầu thu thập dữ liệu thật." />}
+      </Panel>
+
+      <Panel className="animate-rise animate-rise-delay-3">
+        <div className="border-b border-[hsl(var(--border))] px-5 py-5"><div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[hsl(var(--primary))]" /><h2 className="font-display text-base font-semibold">Thiết lập vận hành</h2></div><p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">Áp dụng cho những lần chạy engine mới. Không chứa thông tin đăng nhập Telegram.</p></div>
+        <div className="grid gap-5 px-5 py-5 sm:grid-cols-3"><div><div className="font-mono text-xl font-semibold">{settings.maxAttempts}</div><div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Số lần thử tối đa</div></div><div><div className="font-mono text-xl font-semibold">{settings.minRequestInterval.toFixed(1)}s</div><div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Khoảng cách yêu cầu</div></div><div><div className="font-mono text-xl font-semibold">{settings.autoResume ? 'Bật' : 'Tắt'}</div><div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Tự động tiếp tục</div></div></div>
+        <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] px-5 py-4"><span className="text-xs text-[hsl(var(--muted-foreground))]">Bạn có thể điều chỉnh chi tiết trước mỗi lần chạy.</span><Button variant="outline" onClick={() => updateSettings({ connectionConfigured: connectedCount > 0 })} data-testid="button-save-operation-settings">Đánh dấu đã sẵn sàng</Button></div>
+      </Panel>
+
+      <div className="flex items-start gap-3 rounded-md border border-[hsl(var(--accent)/.45)] bg-[hsl(var(--accent)/.1)] px-4 py-3 text-[11px] leading-relaxed text-[hsl(29_45%_28%)]"><AlertTriangle size={15} className="mt-0.5 shrink-0" /><span>Hãy dùng tài khoản Telegram chuyên dụng và tuân thủ giới hạn của Telegram. Công cụ không né giới hạn hoặc xoay vòng tài khoản để vượt rate limit. <Link href="/jobs" className="font-bold underline underline-offset-2">Đi tới tác vụ</Link></span></div>
     </div>
   </AppShell>;
 }

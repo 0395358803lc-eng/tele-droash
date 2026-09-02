@@ -34,6 +34,7 @@ export function StatusPill({ status }: { status: string }) {
     not_discoverable: { label: 'Không thể xác định', className: 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]' },
     invalid: { label: 'Không hợp lệ', className: 'bg-[hsl(var(--accent)/.2)] text-[hsl(29_58%_31%)]' },
     error: { label: 'Lỗi', className: 'bg-[hsl(var(--destructive)/.12)] text-[hsl(var(--destructive))]' },
+    rate_limited: { label: 'Bị giới hạn', className: 'bg-[hsl(var(--accent)/.2)] text-[hsl(29_58%_31%)]' },
   };
   const item = config[status] ?? config.queued;
   return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wide', item.className)}><span className={cn('mr-1.5 h-1.5 w-1.5 rounded-full bg-current', status === 'running' && 'pulse-dot')} />{item.label}</span>;

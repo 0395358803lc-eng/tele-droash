@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: telegram-accounts
+    description: Telegram account connection operations
 paths:
   /healthz:
     get:
@@ -24,7 +26,130 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /telegram-accounts:
+    get:
+      operationId: listTelegramAccounts
+      tags: [telegram-accounts]
+      summary: List Telegram accounts
+      responses:
+        "200":
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accounts]
+                properties:
+                  accounts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TelegramAccount"
+    post:
+      operationId: startTelegramAccountLogin
+      tags: [telegram-accounts]
+      summary: Start Telegram account login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramLoginStart"
+      responses:
+        "201":
+          description: OTP requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramLoginStartResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /telegram-accounts/{accountId}/login:
+    post:
+      operationId: completeTelegramAccountLogin
+      tags: [telegram-accounts]
+      summary: Submit Telegram OTP or two-step password
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramLoginVerify"
+      responses:
+        "200":
+          description: Login state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramAccount"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /telegram-accounts/{accountId}/status:
+    post:
+      operationId: refreshTelegramAccountStatus
+      tags: [telegram-accounts]
+      summary: Refresh Telegram account connection status
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200":
+          description: Refreshed account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramAccount"
+  /telegram-accounts/{accountId}/check:
+    post:
+      operationId: checkTelegramAccountPhones
+      tags: [telegram-accounts]
+      summary: Check phone numbers with a connected Telegram account
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramCheckRequest"
+      responses:
+        "200":
+          description: Check results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramCheckResponse"
+        "409":
+          description: Account is already being used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /telegram-accounts/{accountId}:
+    delete:
+      operationId: deleteTelegramAccount
+      tags: [telegram-accounts]
+      summary: Delete Telegram account and its encrypted session
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "204":
+          description: Deleted
 components:
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +158,122 @@ components:
           type: string
       required:
         - status
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+    TelegramAccount:
+      type: object
+      required: [id, phoneNumber, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        phoneNumber:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        username:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [disconnected, awaiting_code, awaiting_2fa, connected, rate_limited, failed, disabled]
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    TelegramLoginStart:
+      type: object
+      required: [apiId, apiHash, phoneNumber]
+      properties:
+        apiId:
+          type: string
+          pattern: "^[0-9]+$"
+        apiHash:
+          type: string
+          minLength: 16
+        phoneNumber:
+          type: string
+          minLength: 7
+    TelegramLoginVerify:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          minLength: 4
+        password:
+          type: string
+          minLength: 1
+    TelegramLoginStartResponse:
+      type: object
+      required: [account]
+      properties:
+        account:
+          $ref: "#/components/schemas/TelegramAccount"
+        requiresPassword:
+          type: boolean
+    TelegramCheckRequest:
+      type: object
+      required: [phones]
+      properties:
+        phones:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: string
+            minLength: 7
+    TelegramCheckResult:
+      type: object
+      required: [phone, status, checkedAt]
+      properties:
+        phone:
+          type: string
+        status:
+          type: string
+          enum: [found, not_discoverable, error, rate_limited]
+        username:
+          type: string
+          nullable: true
+        displayName:
+          type: string
+          nullable: true
+        telegramId:
+          type: string
+          nullable: true
+        lastOnline:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        retryAfterSeconds:
+          type: number
+          nullable: true
+        checkedAt:
+          type: string
+          format: date-time
+    TelegramCheckResponse:
+      type: object
+      required: [accountId, results]
+      properties:
+        accountId:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelegramCheckResult"
 

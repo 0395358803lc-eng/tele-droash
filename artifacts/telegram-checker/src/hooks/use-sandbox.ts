@@ -1,39 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { sampleJobs, sampleSettings } from '@/lib/sandbox-data';
 import type { Job, JobWithResults, Result, Settings } from '@/lib/types';
 
-const JOBS_KEY = 'telegram-checker:sandbox-jobs-vietnamese';
-const SETTINGS_KEY = 'telegram-checker:sandbox-settings-vietnamese';
+const JOBS_KEY = 'telegram-checker:jobs-v1';
+const SETTINGS_KEY = 'telegram-checker:settings-v1';
+const OLD_LOCALIZED_JOBS_KEY = 'telegram-checker:sandbox-jobs-vietnamese';
+const OLD_LOCALIZED_SETTINGS_KEY = 'telegram-checker:sandbox-settings-vietnamese';
 const LEGACY_JOBS_KEY = 'telegram-checker:sandbox-jobs';
 const LEGACY_SETTINGS_KEY = 'telegram-checker:sandbox-settings';
 
-const legacyJobNames: Record<string, string> = {
-  'Northstar / Q2 outreach': 'Northstar / Tiếp cận quý 2',
-  'Archway / imported leads': 'Archway / Danh sách liên hệ đã nhập',
-  'Slate / conference roster': 'Slate / Danh sách hội nghị',
-  'Meridian / partner list': 'Meridian / Danh sách đối tác',
+const emptySettings: Settings = {
+  connectionConfigured: false,
+  phoneRegion: 'VN',
+  maxAttempts: 3,
+  minRequestInterval: 1.2,
+  autoResume: true,
 };
-
-function readStorage<T>(key: string, fallback: T): T {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 export function useSandbox() {
   const [jobs, setJobs] = useState<JobWithResults[]>([]);
-  const [settings, setSettings] = useState<Settings>(sampleSettings);
+  const [settings, setSettings] = useState<Settings>(emptySettings);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const storedJobs = readStorage<JobWithResults[] | null>(JOBS_KEY, null);
-    const legacyJobs = readStorage<JobWithResults[] | null>(LEGACY_JOBS_KEY, null);
-    const sourceJobs = storedJobs ?? legacyJobs;
-    setJobs(sourceJobs?.map((job) => ({ ...job, name: legacyJobNames[job.name] ?? job.name })) ?? sampleJobs);
-    setSettings(readStorage(SETTINGS_KEY, readStorage(LEGACY_SETTINGS_KEY, sampleSettings)));
+    // Production must never rehydrate the old demo records. Remove both the
+    // localized and legacy keys so a previous browser session cannot restore
+    // sample jobs after deployment.
+    window.localStorage.removeItem(OLD_LOCALIZED_JOBS_KEY);
+    window.localStorage.removeItem(OLD_LOCALIZED_SETTINGS_KEY);
+    window.localStorage.removeItem(LEGACY_JOBS_KEY);
+    window.localStorage.removeItem(LEGACY_SETTINGS_KEY);
+    setJobs([]);
+    setSettings(emptySettings);
     setHydrated(true);
   }, []);
 
@@ -56,20 +53,23 @@ export function useSandbox() {
     }));
   }, []);
 
-  const addJob = useCallback((name: string, phones: string[]) => {
+  const addJob = useCallback((name: string, phones: string[], checkedResults: Array<{ phone: string; status: Result['status']; username?: string | null; displayName?: string | null; telegramId?: string | null; lastOnline?: string | null; checkedAt: string }> = []) => {
     const now = new Date().toISOString();
+    const results: Result[] = checkedResults.length ? checkedResults.map((result) => ({ phone: result.phone, status: result.status, username: result.username ?? null, displayName: result.displayName ?? null, telegramId: result.telegramId ?? null, lastOnline: result.lastOnline ?? null, checkedAt: result.checkedAt })) : phones.map((phone) => ({ phone, status: 'error' as const, username: null, displayName: null, telegramId: null, lastOnline: null, checkedAt: now }));
+    const found = results.filter((result) => result.status === 'found').length;
+    const notDiscoverable = results.filter((result) => result.status === 'not_discoverable').length;
     const job: JobWithResults = {
       id: `job-${Date.now()}`,
       name,
-      status: 'queued',
+      status: 'completed',
       total: phones.length,
-      processed: 0,
-      found: 0,
-      notDiscoverable: 0,
-      errors: 0,
+      processed: results.length,
+      found,
+      notDiscoverable,
+      errors: results.length - found - notDiscoverable,
       createdAt: now,
       updatedAt: now,
-      results: phones.map((phone) => ({ phone, status: 'not_discoverable', username: null, displayName: null, telegramId: null, lastOnline: null, checkedAt: now })),
+      results,
     };
     setJobs((current) => [job, ...current]);
     return job;
@@ -77,8 +77,8 @@ export function useSandbox() {
 
   const deleteJob = useCallback((id: string) => setJobs((current) => current.filter((job) => job.id !== id)), []);
   const resetSandbox = useCallback(() => {
-    setJobs(sampleJobs);
-    setSettings(sampleSettings);
+    setJobs([]);
+    setSettings(emptySettings);
   }, []);
   const updateSettings = useCallback((updates: Partial<Settings>) => setSettings((current) => ({ ...current, ...updates })), []);
   const selectedJob = useMemo(() => jobs[0], [jobs]);
