@@ -66,6 +66,16 @@ export interface TelegramCheckRequest {
      * @items.minLength 7
      */
   phones: string[];
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  maxAttempts?: number;
+  /**
+     * @minimum 0.1
+     * @maximum 60
+     */
+  minRequestInterval?: number;
 }
 
 export type TelegramCheckResultStatus = typeof TelegramCheckResultStatus[keyof typeof TelegramCheckResultStatus];

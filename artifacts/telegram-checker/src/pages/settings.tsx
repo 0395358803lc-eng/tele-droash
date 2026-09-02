@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Clock3, KeyRound, LoaderCircle, LockKeyhole, Phone, Plus, RefreshCw, ShieldCheck, Smartphone, Trash2, UserRound, Wifi, WifiOff } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
@@ -50,9 +50,22 @@ export default function Settings() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [operationDraft, setOperationDraft] = useState({
+    maxAttempts: 3,
+    minRequestInterval: 1.2,
+    autoResume: true,
+  });
 
   const accounts = accountsQuery.data?.accounts ?? [];
   const connectedCount = useMemo(() => accounts.filter((account) => account.status === 'connected').length, [accounts]);
+
+  useEffect(() => {
+    setOperationDraft({
+      maxAttempts: settings.maxAttempts,
+      minRequestInterval: settings.minRequestInterval,
+      autoResume: settings.autoResume,
+    });
+  }, [settings.autoResume, settings.maxAttempts, settings.minRequestInterval]);
 
   async function beginLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -131,6 +144,17 @@ export default function Settings() {
     }
   }
 
+  function saveOperationSettings(event: React.FormEvent) {
+    event.preventDefault();
+    updateSettings({
+      connectionConfigured: connectedCount > 0,
+      maxAttempts: Math.round(Math.min(10, Math.max(1, operationDraft.maxAttempts || 1))),
+      minRequestInterval: Math.min(60, Math.max(0.1, operationDraft.minRequestInterval || 0.1)),
+      autoResume: operationDraft.autoResume,
+    });
+    setNotice('Đã lưu thiết lập vận hành cho các lần chạy sau.');
+  }
+
   if (!hydrated || accountsQuery.isLoading) return <AppShell><div className="space-y-6"><Skeleton className="h-10 w-48" /><Skeleton className="h-64" /><Skeleton className="h-56" /></div></AppShell>;
 
   return <AppShell>
@@ -167,11 +191,17 @@ export default function Settings() {
         {accounts.length ? <div className="divide-y divide-[hsl(var(--border))]">{accounts.map((account) => <div key={account.id} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`telegram-account-${account.id}`}><div className="flex min-w-0 items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-primary))]"><UserRound size={16} /></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-semibold">{maskPhone(account.phoneNumber)}</span><AccountStatus status={account.status} /></div><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[hsl(var(--muted-foreground))]"><span>{account.displayName || 'Chưa có tên hiển thị'}</span>{account.username && <span className="font-mono">@{account.username}</span>}{account.lastCheckedAt && <span>Kiểm tra {new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(account.lastCheckedAt))}</span>}</div>{account.lastError && <p className="mt-2 text-[11px] text-[hsl(var(--destructive))]">{account.lastError}</p>}</div></div><div className="flex shrink-0 items-center gap-2"><Button variant="outline" onClick={() => refreshAccount(account)} disabled={refreshingId === account.id} data-testid={`button-refresh-account-${account.id}`}>{refreshingId === account.id ? <LoaderCircle size={14} className="animate-spin" /> : <RefreshCw size={14} />} Kiểm tra</Button><Button variant="quiet" className="text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))]" onClick={() => removeAccount(account)} disabled={refreshingId === account.id} data-testid={`button-delete-account-${account.id}`}><Trash2 size={14} /> Xóa</Button></div></div>)}</div> : <EmptyState title="Chưa có tài khoản Telegram" detail="Thêm tài khoản đầu tiên ở biểu mẫu phía trên để bắt đầu thu thập dữ liệu thật." />}
       </Panel>
 
-      <Panel className="animate-rise animate-rise-delay-3">
-        <div className="border-b border-[hsl(var(--border))] px-5 py-5"><div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[hsl(var(--primary))]" /><h2 className="font-display text-base font-semibold">Thiết lập vận hành</h2></div><p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">Áp dụng cho những lần chạy engine mới. Không chứa thông tin đăng nhập Telegram.</p></div>
-        <div className="grid gap-5 px-5 py-5 sm:grid-cols-3"><div><div className="font-mono text-xl font-semibold">{settings.maxAttempts}</div><div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Số lần thử tối đa</div></div><div><div className="font-mono text-xl font-semibold">{settings.minRequestInterval.toFixed(1)}s</div><div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Khoảng cách yêu cầu</div></div><div><div className="font-mono text-xl font-semibold">{settings.autoResume ? 'Bật' : 'Tắt'}</div><div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Tự động tiếp tục</div></div></div>
-        <div className="flex items-center justify-between gap-4 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] px-5 py-4"><span className="text-xs text-[hsl(var(--muted-foreground))]">Bạn có thể điều chỉnh chi tiết trước mỗi lần chạy.</span><Button variant="outline" onClick={() => updateSettings({ connectionConfigured: connectedCount > 0 })} data-testid="button-save-operation-settings">Đánh dấu đã sẵn sàng</Button></div>
-      </Panel>
+       <Panel className="overflow-hidden animate-rise animate-rise-delay-3">
+         <div className="border-b border-[hsl(var(--border))] px-5 py-5"><div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[hsl(var(--primary))]" /><h2 className="font-display text-base font-semibold">Thiết lập vận hành</h2></div><p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">Điều chỉnh cách các lần chạy engine xử lý yêu cầu. Không chứa thông tin đăng nhập Telegram.</p></div>
+         <form onSubmit={saveOperationSettings}>
+           <div className="grid gap-5 px-5 py-5 sm:grid-cols-3">
+             <div><Label htmlFor="operation-max-attempts">Số lần thử tối đa</Label><TextInput id="operation-max-attempts" type="number" min={1} max={10} step={1} value={operationDraft.maxAttempts} onChange={(event) => setOperationDraft((current) => ({ ...current, maxAttempts: Number(event.target.value) }))} data-testid="input-operation-max-attempts" /><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Từ 1 đến 10 lần cho mỗi yêu cầu.</p></div>
+             <div><Label htmlFor="operation-request-interval">Khoảng cách yêu cầu (giây)</Label><TextInput id="operation-request-interval" type="number" min={0.1} max={60} step={0.1} value={operationDraft.minRequestInterval} onChange={(event) => setOperationDraft((current) => ({ ...current, minRequestInterval: Number(event.target.value) }))} data-testid="input-operation-request-interval" /><p className="mt-1.5 text-[11px] text-[hsl(var(--muted-foreground))]">Từ 0,1 đến 60 giây giữa các yêu cầu.</p></div>
+             <label htmlFor="operation-auto-resume" className="flex cursor-pointer items-start gap-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] p-3.5"><input id="operation-auto-resume" type="checkbox" checked={operationDraft.autoResume} onChange={(event) => setOperationDraft((current) => ({ ...current, autoResume: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]" data-testid="input-operation-auto-resume" /><span><span className="block text-sm font-semibold">Tự động tiếp tục</span><span className="mt-1 block text-[11px] leading-relaxed text-[hsl(var(--muted-foreground))]">Tiếp tục tác vụ sau khi có lỗi tạm thời.</span></span></label>
+           </div>
+           <div className="flex flex-col gap-3 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><span className="text-xs text-[hsl(var(--muted-foreground))]">Thiết lập được lưu trên workspace này và áp dụng cho các lần chạy mới.</span><Button type="submit" variant="outline" data-testid="button-save-operation-settings">Lưu thiết lập</Button></div>
+         </form>
+       </Panel>
 
       <div className="flex items-start gap-3 rounded-md border border-[hsl(var(--accent)/.45)] bg-[hsl(var(--accent)/.1)] px-4 py-3 text-[11px] leading-relaxed text-[hsl(29_45%_28%)]"><AlertTriangle size={15} className="mt-0.5 shrink-0" /><span>Hãy dùng tài khoản Telegram chuyên dụng và tuân thủ giới hạn của Telegram. Công cụ không né giới hạn hoặc xoay vòng tài khoản để vượt rate limit. <Link href="/jobs" className="font-bold underline underline-offset-2">Đi tới tác vụ</Link></span></div>
     </div>

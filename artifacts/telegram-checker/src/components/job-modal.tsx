@@ -3,13 +3,15 @@ import { FileUp, LoaderCircle, ShieldCheck, X } from 'lucide-react';
 import { checkTelegramAccountPhones, useListTelegramAccounts } from '@workspace/api-client-react';
 import type { TelegramCheckResult } from '@workspace/api-client-react';
 import { Button, Label, TextInput } from '@/components/ui-primitives';
+import type { Settings } from '@/lib/types';
 
 interface JobModalProps {
   onClose: () => void;
+  settings: Settings;
   onCreate: (accountId: string, name: string, results: TelegramCheckResult[]) => Promise<void> | void;
 }
 
-export function JobModal({ onClose, onCreate }: JobModalProps) {
+export function JobModal({ onClose, settings, onCreate }: JobModalProps) {
   const [name, setName] = useState('');
   const [phoneText, setPhoneText] = useState('');
   const [error, setError] = useState('');
@@ -29,7 +31,7 @@ export function JobModal({ onClose, onCreate }: JobModalProps) {
     setBusy(true);
     setError('');
     try {
-      const response = await checkTelegramAccountPhones(selectedAccountId, { phones });
+      const response = await checkTelegramAccountPhones(selectedAccountId, { phones, maxAttempts: settings.maxAttempts, minRequestInterval: settings.minRequestInterval });
       await onCreate(selectedAccountId, name.trim(), response.results);
       onClose();
     } catch (requestError) {

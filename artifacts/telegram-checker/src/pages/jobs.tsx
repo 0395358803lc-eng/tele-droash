@@ -19,7 +19,7 @@ function progress(job: JobWithResults) {
 }
 
 export default function Jobs() {
-  const { jobs, hydrated, toggleJob, addJob, deleteJob } = useSandbox();
+  const { jobs, settings, hydrated, toggleJob, addJob, deleteJob } = useSandbox();
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedId, setSelectedId] = useState('');
@@ -51,6 +51,6 @@ export default function Jobs() {
         </Panel> : <Panel><EmptyState title="Chưa chọn tác vụ" detail="Chọn một tác vụ trong danh sách để xem chi tiết lần chạy." /></Panel>}
       </div>
     </div>
-      {showModal && <JobModal onClose={() => setShowModal(false)} onCreate={async (accountId, name, results) => { const job = await addJob(accountId, name, results); setSelectedId(job.id); setShowModal(false); }} />}
+      {showModal && <JobModal settings={settings} onClose={() => setShowModal(false)} onCreate={async (accountId, name, results) => { const job = await addJob(accountId, name, results); setSelectedId(job.id); setShowModal(false); }} />}
   </AppShell>;
 }

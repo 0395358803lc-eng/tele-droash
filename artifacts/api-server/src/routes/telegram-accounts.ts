@@ -262,6 +262,8 @@ router.post("/telegram-accounts/:accountId/check", async (req, res) => {
       apiHash: reveal(account.apiHashEncrypted),
       sessionString: reveal(account.sessionEncrypted),
       phones,
+      maxAttempts: req.body?.maxAttempts,
+      minRequestInterval: req.body?.minRequestInterval,
     });
     if (result.state === "error" || !result.results) throw bridgeError(result);
     const hasRateLimit = result.results.some((item) => item.status === "rate_limited");

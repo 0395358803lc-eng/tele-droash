@@ -85,6 +85,8 @@ async def run(payload: dict[str, Any]) -> dict[str, Any]:
             }
         if command == "check":
             results = []
+            max_attempts = max(1, min(10, int(payload.get("maxAttempts") or 3)))
+            min_request_interval = max(0.1, min(60.0, float(payload.get("minRequestInterval") or 1.2)))
             for index, phone_to_check in enumerate(payload.get("phones") or []):
                 checked = {
                     "phone": phone_to_check,
@@ -102,37 +104,43 @@ async def run(payload: dict[str, Any]) -> dict[str, Any]:
                     first_name="",
                     last_name="",
                 )
-                try:
-                    imported = await client(functions.contacts.ImportContactsRequest([contact]))
-                    users = list(getattr(imported, "users", None) or [])
-                    retries = list(getattr(imported, "retry_contacts", None) or [])
-                    if index in retries or phone_to_check in retries:
+                for attempt in range(max_attempts):
+                    if index or attempt:
+                        await asyncio.sleep(min_request_interval)
+                    try:
+                        imported = await client(functions.contacts.ImportContactsRequest([contact]))
+                        users = list(getattr(imported, "users", None) or [])
+                        retries = list(getattr(imported, "retry_contacts", None) or [])
+                        if index in retries or phone_to_check in retries:
+                            checked["status"] = "rate_limited"
+                            checked["errorMessage"] = "Telegram yêu cầu thử lại số này sau."
+                        elif len(users) == 1:
+                            user = users[0]
+                            checked["status"] = "found"
+                            checked["telegramId"] = str(getattr(user, "id", "")) or None
+                            checked["username"] = getattr(user, "username", None)
+                            checked["displayName"] = " ".join(
+                                part for part in [getattr(user, "first_name", None), getattr(user, "last_name", None)] if part
+                            ) or None
+                            user_status = getattr(user, "status", None)
+                            if isinstance(user_status, types.UserStatusOffline):
+                                checked["lastOnline"] = user_status.was_online.isoformat()
+                            elif isinstance(user_status, types.UserStatusOnline):
+                                checked["lastOnline"] = "Đang trực tuyến"
+                            await client(functions.contacts.DeleteContactsRequest(id=[getattr(user, "id", None)]))
+                        elif len(users) > 1:
+                            checked["status"] = "error"
+                            checked["errorMessage"] = "Telegram trả về nhiều hồ sơ bất thường."
+                        break
+                    except errors.FloodWaitError as exc:
                         checked["status"] = "rate_limited"
-                        checked["errorMessage"] = "Telegram yêu cầu thử lại số này sau."
-                    elif len(users) == 1:
-                        user = users[0]
-                        checked["status"] = "found"
-                        checked["telegramId"] = str(getattr(user, "id", "")) or None
-                        checked["username"] = getattr(user, "username", None)
-                        checked["displayName"] = " ".join(
-                            part for part in [getattr(user, "first_name", None), getattr(user, "last_name", None)] if part
-                        ) or None
-                        user_status = getattr(user, "status", None)
-                        if isinstance(user_status, types.UserStatusOffline):
-                            checked["lastOnline"] = user_status.was_online.isoformat()
-                        elif isinstance(user_status, types.UserStatusOnline):
-                            checked["lastOnline"] = "Đang trực tuyến"
-                        await client(functions.contacts.DeleteContactsRequest(id=[getattr(user, "id", None)]))
-                    elif len(users) > 1:
-                        checked["status"] = "error"
-                        checked["errorMessage"] = "Telegram trả về nhiều hồ sơ bất thường."
-                except errors.FloodWaitError as exc:
-                    checked["status"] = "rate_limited"
-                    checked["retryAfterSeconds"] = int(exc.seconds)
-                    checked["errorMessage"] = "Telegram đang giới hạn tốc độ yêu cầu."
-                except Exception:
-                    checked["status"] = "error"
-                    checked["errorMessage"] = "Không thể kiểm tra số này qua Telegram."
+                        checked["retryAfterSeconds"] = int(exc.seconds)
+                        checked["errorMessage"] = "Telegram đang giới hạn tốc độ yêu cầu."
+                        break
+                    except Exception:
+                        if attempt == max_attempts - 1:
+                            checked["status"] = "error"
+                            checked["errorMessage"] = "Không thể kiểm tra số này qua Telegram."
                 results.append(checked)
             return {"state": "connected", "results": results}
         raise ValueError("Unsupported bridge command")

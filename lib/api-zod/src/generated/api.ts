@@ -128,10 +128,17 @@ export const checkTelegramAccountPhonesBodyPhonesItemMin = 7;
 
 export const checkTelegramAccountPhonesBodyPhonesMax = 1000;
 
+export const checkTelegramAccountPhonesBodyMaxAttemptsMax = 10;
+
+export const checkTelegramAccountPhonesBodyMinRequestIntervalMin = 0.1;
+export const checkTelegramAccountPhonesBodyMinRequestIntervalMax = 60;
+
 
 
 export const CheckTelegramAccountPhonesBody = zod.object({
-  "phones": zod.array(zod.string().min(checkTelegramAccountPhonesBodyPhonesItemMin)).min(1).max(checkTelegramAccountPhonesBodyPhonesMax)
+  "phones": zod.array(zod.string().min(checkTelegramAccountPhonesBodyPhonesItemMin)).min(1).max(checkTelegramAccountPhonesBodyPhonesMax),
+  "maxAttempts": zod.number().min(1).max(checkTelegramAccountPhonesBodyMaxAttemptsMax).optional(),
+  "minRequestInterval": zod.number().min(checkTelegramAccountPhonesBodyMinRequestIntervalMin).max(checkTelegramAccountPhonesBodyMinRequestIntervalMax).optional()
 })
 
 export const CheckTelegramAccountPhonesResponse = zod.object({
