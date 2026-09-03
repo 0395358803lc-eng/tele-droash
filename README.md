@@ -4,19 +4,24 @@ Telegram Checker is a local Windows dashboard for preparing, running, monitoring
 
 ## First-time setup
 
-Run:
+After cloning or downloading the repository on Windows, double-click:
 
-```powershell
-pnpm desktop:setup
+```text
+setup.bat
 ```
 
-This creates an isolated Python environment at `telegram-phone-number-checker/.venv`, installs Node/Python dependencies, configures a persistent Windows-user `SESSION_SECRET`, sets the SQLite database path, and records the project Python interpreter in `PYTHON_BIN`.
+`setup.bat` is the recommended one-click bootstrap. It checks for Node.js 20+, Python 3.11+, and the project-tested `pnpm` version. When Node.js or Python is missing, it installs them through Windows Package Manager (`winget`). It then installs the Node workspace, creates the isolated Python environment at `telegram-phone-number-checker/.venv`, installs Python dependencies, configures the persistent Windows-user `SESSION_SECRET` / `DATABASE_PATH` / `PYTHON_BIN`, and runs the complete validation suite.
+
+If `winget` is unavailable on a machine that is missing Node.js or Python, install/update **App Installer** from Microsoft Store and run `setup.bat` again.
 
 Do not delete or replace `SESSION_SECRET` after Telegram accounts have been added. Existing encrypted credentials and StringSession data depend on that key.
 
+For command-line/automation use, the equivalent project setup remains available as `pnpm desktop:setup` after Node.js/pnpm are installed. `setup.bat --no-pause` runs the one-click bootstrap without the final pause and is useful for automated verification.
+
 ## Run & operate
 
-- `pnpm desktop:start` - start the built API and dashboard locally on `127.0.0.1` (`3000` / `5173`). This is the recommended normal-use command.
+- `start.bat` - recommended normal-use launcher after setup; starts the complete local application.
+- `pnpm desktop:start` - command-line equivalent; starts the built API and dashboard locally on `127.0.0.1` (`3000` / `5173`).
 - `pnpm desktop:dev` - start the local development workflow.
 - `pnpm desktop:check` - run Python dependency consistency, Python compile/tests, SQLite integrity, TypeScript typecheck, API build, and frontend build.
 - `pnpm desktop:audit` - run online Node and Python dependency security audits.

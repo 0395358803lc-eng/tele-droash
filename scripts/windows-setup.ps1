@@ -1,3 +1,5 @@
+param([switch]$SkipNodeInstall)
+
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -31,9 +33,13 @@ try {
   Pop-Location
 }
 
-Write-Host 'Installing Node workspace dependencies...'
-pnpm install
-if ($LASTEXITCODE -ne 0) { throw 'pnpm install failed.' }
+if (-not $SkipNodeInstall) {
+  Write-Host 'Installing Node workspace dependencies...'
+  pnpm install --frozen-lockfile
+  if ($LASTEXITCODE -ne 0) { throw 'pnpm install failed.' }
+} else {
+  Write-Host 'Node workspace dependencies were installed by the bootstrap launcher.'
+}
 
 $userSecret = [Environment]::GetEnvironmentVariable('SESSION_SECRET', 'User')
 if (-not $userSecret -and $env:SESSION_SECRET -and $env:SESSION_SECRET.Length -ge 32) {
