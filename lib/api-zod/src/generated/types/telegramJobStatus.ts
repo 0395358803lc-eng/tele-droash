@@ -13,6 +13,8 @@ export const TelegramJobStatus = {
   running: 'running',
   paused: 'paused',
   queued: 'queued',
+  rate_limited: 'rate_limited',
   completed: 'completed',
   failed: 'failed',
+  cancelled: 'cancelled',
 } as const;

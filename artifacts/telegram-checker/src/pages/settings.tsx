@@ -147,7 +147,6 @@ export default function Settings() {
   function saveOperationSettings(event: React.FormEvent) {
     event.preventDefault();
     updateSettings({
-      connectionConfigured: connectedCount > 0,
       maxAttempts: Math.round(Math.min(10, Math.max(1, operationDraft.maxAttempts || 1))),
       minRequestInterval: Math.min(60, Math.max(0.1, operationDraft.minRequestInterval || 0.1)),
       autoResume: operationDraft.autoResume,

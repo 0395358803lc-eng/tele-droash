@@ -28,6 +28,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Database health check failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
   /telegram-accounts:
     get:
       operationId: listTelegramAccounts
@@ -65,6 +71,12 @@ paths:
                 $ref: "#/components/schemas/TelegramLoginStartResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Account already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /telegram-accounts/{accountId}/login:
     post:
       operationId: completeTelegramAccountLogin
@@ -87,6 +99,8 @@ paths:
                 $ref: "#/components/schemas/TelegramAccount"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /telegram-accounts/{accountId}/status:
     post:
       operationId: refreshTelegramAccountStatus
@@ -101,6 +115,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TelegramAccount"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /telegram-accounts/{accountId}/check:
     post:
       operationId: checkTelegramAccountPhones
@@ -115,12 +131,16 @@ paths:
             schema:
               $ref: "#/components/schemas/TelegramCheckRequest"
       responses:
-        "200":
-          description: Check results
+        "202":
+          description: Durable Telegram check job accepted
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TelegramCheckResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: Account is already being used
           content:
@@ -137,6 +157,14 @@ paths:
       responses:
         "204":
           description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Account still has an active durable job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /jobs:
     get:
       operationId: listTelegramJobs
@@ -155,25 +183,6 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/TelegramJob"
-    post:
-      operationId: createTelegramJob
-      tags: [telegram-jobs]
-      summary: Save a completed Telegram check job and its results
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TelegramJobInput"
-      responses:
-        "201":
-          description: Persisted job
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TelegramJobWithResults"
-        "400":
-          $ref: "#/components/responses/BadRequest"
   /jobs/{jobId}:
     get:
       operationId: getTelegramJob
@@ -209,8 +218,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TelegramJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: Job transition conflicts with current worker state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     delete:
       operationId: deleteTelegramJob
       tags: [telegram-jobs]
@@ -222,6 +239,12 @@ paths:
           description: Deleted
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: Worker cancellation requested before deletion can complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   parameters:
     AccountId:
@@ -252,11 +275,19 @@ components:
   schemas:
     HealthStatus:
       type: object
+      required: [status, database]
       properties:
         status:
           type: string
-      required:
-        - status
+        database:
+          type: object
+          required: [ok]
+          properties:
+            ok:
+              type: boolean
+            detail:
+              type: string
+              nullable: true
     Error:
       type: object
       properties:
@@ -343,6 +374,15 @@ components:
           type: number
           minimum: 0.1
           maximum: 60
+        jobName:
+          type: string
+          minLength: 1
+          maxLength: 120
+        phoneRegion:
+          type: string
+          pattern: "^[A-Z]{2}$"
+        autoResume:
+          type: boolean
     TelegramCheckResult:
       type: object
       required: [phone, status, checkedAt]
@@ -351,7 +391,7 @@ components:
           type: string
         status:
           type: string
-          enum: [found, not_discoverable, error, rate_limited]
+          enum: [found, not_discoverable, invalid, error, rate_limited]
         username:
           type: string
           nullable: true
@@ -375,14 +415,15 @@ components:
           format: date-time
     TelegramCheckResponse:
       type: object
-      required: [accountId, results]
+      required: [accountId, jobId, status]
       properties:
         accountId:
           type: string
-        results:
-          type: array
-          items:
-            $ref: "#/components/schemas/TelegramCheckResult"
+        jobId:
+          type: string
+        status:
+          type: string
+          enum: [queued]
     TelegramJob:
       type: object
       required: [id, accountId, name, status, total, processed, found, notDiscoverable, errors, createdAt, updatedAt]
@@ -395,7 +436,7 @@ components:
           type: string
         status:
           type: string
-          enum: [running, paused, queued, completed, failed]
+          enum: [running, paused, queued, rate_limited, completed, failed, cancelled]
         total:
           type: number
         processed:
@@ -446,27 +487,11 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/TelegramJobResult"
-    TelegramJobInput:
-      type: object
-      required: [accountId, name, results]
-      properties:
-        accountId:
-          type: string
-        name:
-          type: string
-          minLength: 1
-          maxLength: 120
-        results:
-          type: array
-          minItems: 1
-          maxItems: 1000
-          items:
-            $ref: "#/components/schemas/TelegramJobResult"
     TelegramJobUpdate:
       type: object
       required: [status]
       properties:
         status:
           type: string
-          enum: [running, paused, queued, completed, failed]
+          enum: [running, paused]
 

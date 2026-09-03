@@ -5,9 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { TelegramCheckResult } from './telegramCheckResult';
+import type { TelegramCheckResponseStatus } from './telegramCheckResponseStatus';
 
 export interface TelegramCheckResponse {
   accountId: string;
-  results: TelegramCheckResult[];
+  jobId: string;
+  status: TelegramCheckResponseStatus;
 }

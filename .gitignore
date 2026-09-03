@@ -28,6 +28,8 @@ node_modules
 !.vscode/extensions.json
 
 # misc
+*.bak
+*.tmp
 /.sass-cache
 /connect.lock
 /coverage
@@ -47,3 +49,9 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# local desktop runtime data
+/data/
+telegram-phone-number-checker/data/
+*.db-wal
+*.db-shm

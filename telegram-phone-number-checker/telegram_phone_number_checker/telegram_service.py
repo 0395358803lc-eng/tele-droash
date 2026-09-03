@@ -83,6 +83,7 @@ class TelegramService:
         phone_number: str,
         proxy: Optional[str] = None,
         session_dir: str = ".",
+        session_string: Optional[str] = None,
     ):
         self._api_id = api_id
         self._api_hash = api_hash
@@ -90,18 +91,27 @@ class TelegramService:
         self._proxy = parse_proxy(proxy) if proxy else None
         self._client: Optional[TelegramClient] = None
         self._session_dir = session_dir
+        self._session_string = session_string
 
     async def connect(self) -> None:
         from getpass import getpass
 
+        if self._session_string:
+            from telethon.sessions import StringSession
+            session = StringSession(self._session_string)
+        else:
+            session = Path(self._session_dir) / self._phone_number
         client = TelegramClient(
-            Path(self._session_dir) / self._phone_number,
+            session,
             int(self._api_id),
             self._api_hash,
             proxy=self._proxy,
         )
         await client.connect()
         if not await client.is_user_authorized():
+            if self._session_string:
+                await client.disconnect()
+                raise RuntimeError("Stored Telegram session is no longer authorized")
             await client.send_code_request(self._phone_number)
             try:
                 await client.sign_in(

@@ -1,25 +1,33 @@
 import { Router } from "express";
 import { eq } from "drizzle-orm";
-import { randomUUID, createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { db, telegramAccounts, type TelegramAccount } from "@workspace/db";
+import {
+  db,
+  getDurableJob,
+  saveDurableJobSettings,
+  telegramAccounts,
+  telegramJobs,
+  type TelegramAccount,
+} from "@workspace/db";
+import { CheckTelegramAccountPhonesBody } from "@workspace/api-zod";
+import { runDesktopControl, spawnDurableWorker } from "../lib/desktop-engine";
+import { protectSecret, revealSecret } from "../lib/telegram-crypto";
 
 const router = Router();
 const bridgePath = path.resolve(
   import.meta.dirname,
   "../../../telegram-phone-number-checker/telegram_phone_number_checker/api_bridge.py",
 );
-const encryptionKey = createHash("sha256")
-  .update(process.env.SESSION_SECRET ?? "")
-  .digest();
-
-if (!process.env.SESSION_SECRET) {
-  throw new Error("SESSION_SECRET must be set to manage Telegram sessions.");
-}
 
 type BridgeResult = {
-  state: "awaiting_code" | "awaiting_2fa" | "connected" | "disconnected" | "error";
+  state:
+    | "awaiting_code"
+    | "awaiting_2fa"
+    | "connected"
+    | "disconnected"
+    | "error";
   phoneCodeHash?: string;
   sessionString?: string;
   displayName?: string | null;
@@ -39,22 +47,6 @@ type BridgeCheckResult = {
   errorMessage: string | null;
   retryAfterSeconds: number | null;
 };
-
-const accountLocks = new Set<string>();
-
-function protect(value: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey, iv);
-  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  return `v1.${iv.toString("base64url")}.${cipher.getAuthTag().toString("base64url")}.${ciphertext.toString("base64url")}`;
-}
-
-function reveal(value: string): string {
-  const [, iv, tag, ciphertext] = value.split(".");
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey, Buffer.from(iv, "base64url"));
-  decipher.setAuthTag(Buffer.from(tag, "base64url"));
-  return Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8");
-}
 
 function normalizePhone(value: string): string {
   const phone = value.replace(/[^\d+]/g, "");
@@ -80,17 +72,32 @@ function publicAccount(account: TelegramAccount) {
 
 function runBridge(payload: Record<string, unknown>): Promise<BridgeResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn("python", [bridgePath], {
+    const child = spawn(process.env.PYTHON_BIN || "python", [bridgePath], {
       stdio: ["pipe", "pipe", "ignore"],
       env: { ...process.env, PYTHONUNBUFFERED: "1" },
     });
     let stdout = "";
+    const maxStdoutBytes = 8 * 1024 * 1024;
+    const phoneCount = Array.isArray(payload.phones)
+      ? payload.phones.length
+      : 0;
+    const timeoutMs = Math.min(
+      30 * 60_000,
+      Math.max(90_000, 60_000 + phoneCount * 3_000),
+    );
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error("Telegram request timed out."));
-    }, 90_000);
+    }, timeoutMs);
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
+      if (Buffer.byteLength(stdout, "utf8") > maxStdoutBytes) {
+        child.kill("SIGKILL");
+        clearTimeout(timer);
+        reject(
+          new Error("Telegram engine response exceeded the safety limit."),
+        );
+      }
     });
     child.on("error", () => {
       clearTimeout(timer);
@@ -98,7 +105,8 @@ function runBridge(payload: Record<string, unknown>): Promise<BridgeResult> {
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code !== 0) return reject(new Error("Telegram engine exited unexpectedly."));
+      if (code !== 0)
+        return reject(new Error("Telegram engine exited unexpectedly."));
       try {
         resolve(JSON.parse(stdout.trim()) as BridgeResult);
       } catch {
@@ -130,163 +138,297 @@ router.post("/telegram-accounts", async (req, res) => {
       throw new Error("API ID hoặc API Hash không hợp lệ.");
     }
   } catch (error) {
-    return res.status(400).json({ message: error instanceof Error ? error.message : "Dữ liệu không hợp lệ." });
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : "Dữ liệu không hợp lệ.",
+    });
   }
 
-  const existing = await db.select().from(telegramAccounts).where(eq(telegramAccounts.phoneNumber, phoneNumber));
-  if (existing.length) return res.status(409).json({ message: "Tài khoản này đã được thêm." });
+  const existing = await db
+    .select()
+    .from(telegramAccounts)
+    .where(eq(telegramAccounts.phoneNumber, phoneNumber));
+  if (existing.length)
+    return res.status(409).json({ message: "Tài khoản này đã được thêm." });
 
   try {
-    const result = await runBridge({ command: "start", apiId, apiHash, phoneNumber });
-    if (result.state === "error" || !result.phoneCodeHash || !result.sessionString) {
+    const result = await runBridge({
+      command: "start",
+      apiId,
+      apiHash,
+      phoneNumber,
+    });
+    if (
+      result.state === "error" ||
+      !result.phoneCodeHash ||
+      !result.sessionString
+    ) {
       throw bridgeError(result);
     }
-    const [account] = await db.insert(telegramAccounts).values({
-      id: randomUUID(),
-      phoneNumber,
-      status: "awaiting_code",
-      apiIdEncrypted: protect(apiId),
-      apiHashEncrypted: protect(apiHash),
-      sessionEncrypted: protect(result.sessionString),
-      phoneCodeHashEncrypted: protect(result.phoneCodeHash),
-      lastError: null,
-      updatedAt: new Date(),
-    }).returning();
-    return res.status(201).json({ account: publicAccount(account), requiresPassword: false });
+    const [account] = await db
+      .insert(telegramAccounts)
+      .values({
+        id: randomUUID(),
+        phoneNumber,
+        status: "awaiting_code",
+        apiIdEncrypted: protectSecret(apiId),
+        apiHashEncrypted: protectSecret(apiHash),
+        sessionEncrypted: protectSecret(result.sessionString),
+        phoneCodeHashEncrypted: protectSecret(result.phoneCodeHash),
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .returning();
+    return res
+      .status(201)
+      .json({ account: publicAccount(account), requiresPassword: false });
   } catch (error) {
-    return res.status(400).json({ message: error instanceof Error ? error.message : "Không thể gửi mã OTP." });
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : "Không thể gửi mã OTP.",
+    });
   }
 });
 
 router.post("/telegram-accounts/:accountId/login", async (req, res) => {
-  const [account] = await db.select().from(telegramAccounts).where(eq(telegramAccounts.id, req.params.accountId));
-  if (!account) return res.status(404).json({ message: "Không tìm thấy tài khoản." });
+  const [account] = await db
+    .select()
+    .from(telegramAccounts)
+    .where(eq(telegramAccounts.id, req.params.accountId));
+  if (!account)
+    return res.status(404).json({ message: "Không tìm thấy tài khoản." });
   const code = String(req.body?.code ?? "").trim();
   const password = req.body?.password ? String(req.body.password) : undefined;
-  if (!code || code.length < 4) return res.status(400).json({ message: "Nhập mã OTP Telegram." });
+  if (!code || code.length < 4)
+    return res.status(400).json({ message: "Nhập mã OTP Telegram." });
   if (!account.sessionEncrypted || !account.phoneCodeHashEncrypted) {
-    return res.status(400).json({ message: "Phiên chờ đăng nhập đã hết. Hãy bắt đầu lại." });
+    return res
+      .status(400)
+      .json({ message: "Phiên chờ đăng nhập đã hết. Hãy bắt đầu lại." });
   }
 
   try {
     const result = await runBridge({
       command: "verify",
-      apiId: reveal(account.apiIdEncrypted),
-      apiHash: reveal(account.apiHashEncrypted),
+      apiId: revealSecret(account.apiIdEncrypted),
+      apiHash: revealSecret(account.apiHashEncrypted),
       phoneNumber: account.phoneNumber,
       code,
       password,
-      phoneCodeHash: reveal(account.phoneCodeHashEncrypted),
-      sessionString: reveal(account.sessionEncrypted),
+      phoneCodeHash: revealSecret(account.phoneCodeHashEncrypted),
+      sessionString: revealSecret(account.sessionEncrypted),
     });
     if (result.state === "error") throw bridgeError(result);
-    const nextStatus = result.state === "awaiting_2fa" ? "awaiting_2fa" : "connected";
-    const [updated] = await db.update(telegramAccounts).set({
-      status: nextStatus,
-      sessionEncrypted: result.sessionString ? protect(result.sessionString) : account.sessionEncrypted,
-      phoneCodeHashEncrypted: nextStatus === "connected" ? null : account.phoneCodeHashEncrypted,
-      displayName: result.displayName ?? account.displayName,
-      username: result.username ?? account.username,
-      lastError: null,
-      updatedAt: new Date(),
-    }).where(eq(telegramAccounts.id, account.id)).returning();
+    const nextStatus =
+      result.state === "awaiting_2fa" ? "awaiting_2fa" : "connected";
+    const [updated] = await db
+      .update(telegramAccounts)
+      .set({
+        status: nextStatus,
+        sessionEncrypted: result.sessionString
+          ? protectSecret(result.sessionString)
+          : account.sessionEncrypted,
+        phoneCodeHashEncrypted:
+          nextStatus === "connected" ? null : account.phoneCodeHashEncrypted,
+        displayName: result.displayName ?? account.displayName,
+        username: result.username ?? account.username,
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(telegramAccounts.id, account.id))
+      .returning();
     return res.json(publicAccount(updated));
   } catch (error) {
-    await db.update(telegramAccounts).set({
-      status: "failed",
-      lastError: error instanceof Error ? error.message : "Đăng nhập thất bại.",
-      updatedAt: new Date(),
-    }).where(eq(telegramAccounts.id, account.id));
-    return res.status(400).json({ message: error instanceof Error ? error.message : "Đăng nhập thất bại." });
+    await db
+      .update(telegramAccounts)
+      .set({
+        status: "failed",
+        lastError:
+          error instanceof Error ? error.message : "Đăng nhập thất bại.",
+        updatedAt: new Date(),
+      })
+      .where(eq(telegramAccounts.id, account.id));
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : "Đăng nhập thất bại.",
+    });
   }
 });
 
 router.post("/telegram-accounts/:accountId/status", async (req, res) => {
-  const [account] = await db.select().from(telegramAccounts).where(eq(telegramAccounts.id, req.params.accountId));
-  if (!account) return res.status(404).json({ message: "Không tìm thấy tài khoản." });
+  const [account] = await db
+    .select()
+    .from(telegramAccounts)
+    .where(eq(telegramAccounts.id, req.params.accountId));
+  if (!account)
+    return res.status(404).json({ message: "Không tìm thấy tài khoản." });
   if (account.status === "disabled") return res.json(publicAccount(account));
   if (!account.sessionEncrypted) return res.json(publicAccount(account));
   try {
     const result = await runBridge({
       command: "status",
-      apiId: reveal(account.apiIdEncrypted),
-      apiHash: reveal(account.apiHashEncrypted),
-      sessionString: reveal(account.sessionEncrypted),
+      apiId: revealSecret(account.apiIdEncrypted),
+      apiHash: revealSecret(account.apiHashEncrypted),
+      sessionString: revealSecret(account.sessionEncrypted),
     });
     if (result.state === "error") throw bridgeError(result);
-    const [updated] = await db.update(telegramAccounts).set({
-      status: result.state === "connected" ? "connected" : "disconnected",
-      displayName: result.displayName ?? account.displayName,
-      username: result.username ?? account.username,
-      sessionEncrypted: result.sessionString ? protect(result.sessionString) : account.sessionEncrypted,
-      lastCheckedAt: new Date(),
-      lastError: null,
-      updatedAt: new Date(),
-    }).where(eq(telegramAccounts.id, account.id)).returning();
+    const [updated] = await db
+      .update(telegramAccounts)
+      .set({
+        status: result.state === "connected" ? "connected" : "disconnected",
+        displayName: result.displayName ?? account.displayName,
+        username: result.username ?? account.username,
+        sessionEncrypted: result.sessionString
+          ? protectSecret(result.sessionString)
+          : account.sessionEncrypted,
+        lastCheckedAt: new Date(),
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(telegramAccounts.id, account.id))
+      .returning();
     return res.json(publicAccount(updated));
   } catch (error) {
     const errorCode = (error as Error & { code?: string }).code;
     const rateLimited = errorCode === "FloodWaitError";
-    const [updated] = await db.update(telegramAccounts).set({
-      status: rateLimited ? "rate_limited" : "failed",
-      lastCheckedAt: new Date(),
-      lastError: error instanceof Error ? error.message : "Không thể kiểm tra trạng thái.",
-      updatedAt: new Date(),
-    }).where(eq(telegramAccounts.id, account.id)).returning();
+    const [updated] = await db
+      .update(telegramAccounts)
+      .set({
+        status: rateLimited ? "rate_limited" : "failed",
+        lastCheckedAt: new Date(),
+        lastError:
+          error instanceof Error
+            ? error.message
+            : "Không thể kiểm tra trạng thái.",
+        updatedAt: new Date(),
+      })
+      .where(eq(telegramAccounts.id, account.id))
+      .returning();
     return res.json(publicAccount(updated));
   }
 });
 
 router.post("/telegram-accounts/:accountId/check", async (req, res) => {
   const accountId = req.params.accountId;
-  const [account] = await db.select().from(telegramAccounts).where(eq(telegramAccounts.id, accountId));
-  if (!account) return res.status(404).json({ message: "Không tìm thấy tài khoản." });
+  const [account] = await db
+    .select()
+    .from(telegramAccounts)
+    .where(eq(telegramAccounts.id, accountId));
+  if (!account)
+    return res.status(404).json({ message: "Không tìm thấy tài khoản." });
   if (account.status !== "connected" || !account.sessionEncrypted) {
-    return res.status(400).json({ message: "Tài khoản chưa ở trạng thái đã kết nối." });
+    return res
+      .status(400)
+      .json({ message: "Tài khoản chưa ở trạng thái đã kết nối." });
   }
-  if (accountLocks.has(accountId)) {
-    return res.status(409).json({ message: "Tài khoản đang được dùng cho một tác vụ khác." });
-  }
-  const rawPhones = req.body?.phones;
-  if (!Array.isArray(rawPhones) || rawPhones.length < 1 || rawPhones.length > 1000) {
-    return res.status(400).json({ message: "Cần nhập từ 1 đến 1.000 số điện thoại." });
-  }
-  const phones = [...new Set(rawPhones.map((phone) => String(phone).trim()).filter((phone) => phone.length >= 7))];
-  if (!phones.length) return res.status(400).json({ message: "Không có số điện thoại hợp lệ để kiểm tra." });
 
-  accountLocks.add(accountId);
+  const parsed = CheckTelegramAccountPhonesBody.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Dữ liệu kiểm tra không hợp lệ." });
+  }
+  if (parsed.data.phones.length > 1000) {
+    return res
+      .status(400)
+      .json({ message: "Mỗi tác vụ tối đa 1.000 số điện thoại." });
+  }
+
+  const jobId = randomUUID();
+  const jobName = String(
+    req.body?.jobName || `Telegram check ${new Date().toLocaleString("vi-VN")}`,
+  )
+    .trim()
+    .slice(0, 120);
+
   try {
-    const result = await runBridge({
-      command: "check",
-      apiId: reveal(account.apiIdEncrypted),
-      apiHash: reveal(account.apiHashEncrypted),
-      sessionString: reveal(account.sessionEncrypted),
-      phones,
-      maxAttempts: req.body?.maxAttempts,
-      minRequestInterval: req.body?.minRequestInterval,
+    const created = await runDesktopControl({
+      command: "create",
+      jobId,
+      name: jobName,
+      phones: parsed.data.phones,
+      maxAttempts: parsed.data.maxAttempts,
+      defaultRegion: parsed.data.phoneRegion ?? "VN",
     });
-    if (result.state === "error" || !result.results) throw bridgeError(result);
-    const hasRateLimit = result.results.some((item) => item.status === "rate_limited");
-    await db.update(telegramAccounts).set({
-      status: hasRateLimit ? "rate_limited" : "connected",
-      lastCheckedAt: new Date(),
-      lastError: hasRateLimit ? "Telegram đang giới hạn tốc độ yêu cầu." : null,
-      updatedAt: new Date(),
-    }).where(eq(telegramAccounts.id, accountId));
-    return res.json({
+
+    await db.insert(telegramJobs).values({
+      id: jobId,
       accountId,
-      results: result.results.map((item) => ({ ...item, checkedAt: new Date().toISOString() })),
+      name: jobName,
+      status: "queued",
+      total: Number(created.total ?? parsed.data.phones.length),
+      processed: 0,
+      found: 0,
+      notDiscoverable: 0,
+      errors: 0,
+      maxAttempts: parsed.data.maxAttempts ?? 3,
+      minRequestInterval: parsed.data.minRequestInterval ?? 1.2,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
+
+    saveDurableJobSettings(jobId, {
+      maxAttempts: parsed.data.maxAttempts ?? 3,
+      minRequestInterval: parsed.data.minRequestInterval ?? 1.2,
+      phoneRegion: parsed.data.phoneRegion ?? "VN",
+      autoResume: parsed.data.autoResume ?? true,
+    });
+
+    spawnDurableWorker(
+      jobId,
+      {
+        apiId: revealSecret(account.apiIdEncrypted),
+        apiHash: revealSecret(account.apiHashEncrypted),
+        phoneNumber: account.phoneNumber,
+        sessionString: revealSecret(account.sessionEncrypted),
+      },
+      {
+        maxAttempts: parsed.data.maxAttempts,
+        minRequestInterval: parsed.data.minRequestInterval,
+        autoResume: parsed.data.autoResume ?? true,
+      },
+    );
+
+    await db
+      .update(telegramAccounts)
+      .set({
+        lastCheckedAt: new Date(),
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(telegramAccounts.id, accountId));
+
+    return res.status(202).json({ accountId, jobId, status: "queued" });
   } catch (error) {
-    return res.status(400).json({ message: error instanceof Error ? error.message : "Không thể kiểm tra số điện thoại." });
-  } finally {
-    accountLocks.delete(accountId);
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "Không thể tạo tác vụ kiểm tra.",
+    });
   }
 });
 
 router.delete("/telegram-accounts/:accountId", async (req, res) => {
-  const deleted = await db.delete(telegramAccounts).where(eq(telegramAccounts.id, req.params.accountId)).returning({ id: telegramAccounts.id });
-  if (!deleted.length) return res.status(404).json({ message: "Không tìm thấy tài khoản." });
+  const accountJobs = await db
+    .select({ id: telegramJobs.id })
+    .from(telegramJobs)
+    .where(eq(telegramJobs.accountId, req.params.accountId));
+  const active = accountJobs.find(({ id }) => {
+    const job = getDurableJob(id);
+    return job && !["COMPLETED", "FAILED", "CANCELLED"].includes(job.status);
+  });
+  if (active) {
+    return res.status(409).json({
+      message:
+        "Không thể xóa Telegram account khi còn durable job chưa kết thúc.",
+    });
+  }
+  for (const { id } of accountJobs) {
+    if (getDurableJob(id))
+      await runDesktopControl({ command: "delete", jobId: id });
+  }
+  const deleted = await db
+    .delete(telegramAccounts)
+    .where(eq(telegramAccounts.id, req.params.accountId))
+    .returning({ id: telegramAccounts.id });
+  if (!deleted.length)
+    return res.status(404).json({ message: "Không tìm thấy tài khoản." });
   return res.status(204).send();
 });
 

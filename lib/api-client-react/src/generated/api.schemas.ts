@@ -5,8 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type HealthStatusDatabase = {
+  ok: boolean;
+  detail?: string | null;
+};
+
 export interface HealthStatus {
   status: string;
+  database: HealthStatusDatabase;
 }
 
 export interface Error {
@@ -76,6 +82,14 @@ export interface TelegramCheckRequest {
      * @maximum 60
      */
   minRequestInterval?: number;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  jobName?: string;
+  /** @pattern ^[A-Z]{2}$ */
+  phoneRegion?: string;
+  autoResume?: boolean;
 }
 
 export type TelegramCheckResultStatus = typeof TelegramCheckResultStatus[keyof typeof TelegramCheckResultStatus];
@@ -84,6 +98,7 @@ export type TelegramCheckResultStatus = typeof TelegramCheckResultStatus[keyof t
 export const TelegramCheckResultStatus = {
   found: 'found',
   not_discoverable: 'not_discoverable',
+  invalid: 'invalid',
   error: 'error',
   rate_limited: 'rate_limited',
 } as const;
@@ -100,9 +115,17 @@ export interface TelegramCheckResult {
   checkedAt: string;
 }
 
+export type TelegramCheckResponseStatus = typeof TelegramCheckResponseStatus[keyof typeof TelegramCheckResponseStatus];
+
+
+export const TelegramCheckResponseStatus = {
+  queued: 'queued',
+} as const;
+
 export interface TelegramCheckResponse {
   accountId: string;
-  results: TelegramCheckResult[];
+  jobId: string;
+  status: TelegramCheckResponseStatus;
 }
 
 export type TelegramJobStatus = typeof TelegramJobStatus[keyof typeof TelegramJobStatus];
@@ -112,8 +135,10 @@ export const TelegramJobStatus = {
   running: 'running',
   paused: 'paused',
   queued: 'queued',
+  rate_limited: 'rate_limited',
   completed: 'completed',
   failed: 'failed',
+  cancelled: 'cancelled',
 } as const;
 
 export interface TelegramJob {
@@ -163,29 +188,12 @@ export type TelegramJobWithResults = TelegramJob & {
   results: TelegramJobResult[];
 };
 
-export interface TelegramJobInput {
-  accountId: string;
-  /**
-     * @minLength 1
-     * @maxLength 120
-     */
-  name: string;
-  /**
-     * @minItems 1
-     * @maxItems 1000
-     */
-  results: TelegramJobResult[];
-}
-
 export type TelegramJobUpdateStatus = typeof TelegramJobUpdateStatus[keyof typeof TelegramJobUpdateStatus];
 
 
 export const TelegramJobUpdateStatus = {
   running: 'running',
   paused: 'paused',
-  queued: 'queued',
-  completed: 'completed',
-  failed: 'failed',
 } as const;
 
 export interface TelegramJobUpdate {

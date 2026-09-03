@@ -105,7 +105,7 @@ class CheckItem:
     normalized_phone: Optional[str] = None
     status: CheckStatus = CheckStatus.PENDING
     attempt_count: int = 0
-    max_attempts: int = 5
+    max_attempts: int = 3
     next_retry_at: Optional[str] = None
     last_error_type: Optional[str] = None
     last_error_message: Optional[str] = None

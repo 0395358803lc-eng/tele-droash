@@ -146,6 +146,7 @@ class JobManager:
                 self._config.api_hash,
                 self._config.api_phone_number,
                 proxy=self._config.proxy,
+                session_string=getattr(self._config, "session_string", None),
             )
         )
         worker = Worker(
@@ -286,7 +287,15 @@ class JobManager:
                 self._job_repo.reconcile_stats(job_id)
                 job = self._job_repo.get(job_id)
 
-                if worker.paused_on_rate_limit:
+                if worker.cancel_requested_by_command:
+                    if not self._job_repo.update_status_if_owned(
+                        job_id, worker.worker_id, JobStatus.CANCELLED
+                    ):
+                        raise LostOwnershipError(
+                            f"Worker {worker.worker_id} cannot cancel job {job_id}"
+                        )
+                    final_status = JobStatus.CANCELLED
+                elif worker.paused_on_rate_limit:
                     self._job_repo.update_status_if_owned(
                         job_id, worker.worker_id, JobStatus.RATE_LIMITED
                     )

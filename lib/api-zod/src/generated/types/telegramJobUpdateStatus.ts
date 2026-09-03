@@ -12,7 +12,4 @@ export type TelegramJobUpdateStatus = typeof TelegramJobUpdateStatus[keyof typeo
 export const TelegramJobUpdateStatus = {
   running: 'running',
   paused: 'paused',
-  queued: 'queued',
-  completed: 'completed',
-  failed: 'failed',
 } as const;

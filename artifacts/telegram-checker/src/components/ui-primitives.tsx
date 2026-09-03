@@ -30,6 +30,7 @@ export function StatusPill({ status }: { status: string }) {
     queued: { label: 'Đang chờ', className: 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]' },
     completed: { label: 'Hoàn tất', className: 'bg-[hsl(162_45%_88%)] text-[hsl(170_48%_29%)]' },
     failed: { label: 'Thất bại', className: 'bg-[hsl(var(--destructive)/.12)] text-[hsl(var(--destructive))]' },
+    cancelled: { label: 'Đã hủy', className: 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]' },
     found: { label: 'Tìm thấy', className: 'bg-[hsl(var(--primary)/.12)] text-[hsl(var(--primary))]' },
     not_discoverable: { label: 'Không thể xác định', className: 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]' },
     invalid: { label: 'Không hợp lệ', className: 'bg-[hsl(var(--accent)/.2)] text-[hsl(29_58%_31%)]' },

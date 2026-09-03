@@ -6,6 +6,7 @@ from typing import Optional
 SCHEMA = """
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
+PRAGMA busy_timeout=5000;
 
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
@@ -39,7 +40,7 @@ CREATE TABLE IF NOT EXISTS check_items (
     normalized_phone TEXT,
     status TEXT NOT NULL,
     attempt_count INTEGER DEFAULT 0,
-    max_attempts INTEGER DEFAULT 5,
+    max_attempts INTEGER DEFAULT 3,
     next_retry_at TEXT,
     last_error_type TEXT,
     last_error_message TEXT,

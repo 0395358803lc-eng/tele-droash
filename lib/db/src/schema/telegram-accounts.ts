@@ -1,7 +1,7 @@
 import { createInsertSchema } from "drizzle-zod";
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const telegramAccounts = pgTable("telegram_accounts", {
+export const telegramAccounts = sqliteTable("telegram_accounts", {
   id: text("id").primaryKey(),
   phoneNumber: text("phone_number").notNull().unique(),
   displayName: text("display_name"),
@@ -11,10 +11,14 @@ export const telegramAccounts = pgTable("telegram_accounts", {
   apiHashEncrypted: text("api_hash_encrypted").notNull(),
   sessionEncrypted: text("session_encrypted"),
   phoneCodeHashEncrypted: text("phone_code_hash_encrypted"),
-  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  lastCheckedAt: integer("last_checked_at", { mode: "timestamp_ms" }),
   lastError: text("last_error"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
 });
 
 export const insertTelegramAccountSchema = createInsertSchema(telegramAccounts);

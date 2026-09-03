@@ -82,7 +82,7 @@ DATABASE_PATH=data/checker.db
 
 DEFAULT_PHONE_REGION=VN
 
-MAX_ATTEMPTS=5
+MAX_ATTEMPTS=3
 BASE_RETRY_DELAY_SECONDS=30
 MAX_RETRY_DELAY_SECONDS=3600
 
@@ -112,11 +112,15 @@ LOG_LEVEL=INFO
 | `LEASE_RENEW_FAILURE_LIMIT` | Consecutive lease-renew failures before the worker fails closed |
 | `LEASE_TAKEOVER_GRACE_SECONDS` | Extra wait after expiry before another worker may take over |
 | `IN_FLIGHT_RECOVERY_GRACE_SECONDS` | Quarantine before retrying an uncertain in-flight request |
-| `AUTO_RESUME` | Resume paused jobs on startup automatically |
+| `AUTO_RESUME` | CLI default for whether a paused job may resume automatically. The desktop dashboard persists its own per-job `autoResume` setting. |
 | `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 All `.env` values can also be passed as CLI options (the env var is the
 default). See `telegram-phone-number-checker check --help`.
+
+### Desktop dashboard settings
+
+When jobs are created from the Windows dashboard, the operational settings are persisted per job in SQLite (`desktop_job_settings`). The dashboard sends `maxAttempts`, `minRequestInterval`, `phoneRegion`, and `autoResume`; resume/recovery reuses those persisted values. The CLI still uses `.env`/CLI defaults when it is run directly.
 
 ## Telegram login
 

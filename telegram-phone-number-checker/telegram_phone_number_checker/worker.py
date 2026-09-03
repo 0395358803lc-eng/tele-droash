@@ -87,6 +87,7 @@ class Worker:
         self._retry_poll_interval = 5.0
         self._claimed_account = False
         self._paused_requested = False
+        self._cancel_requested_by_command = False
         self._renew_failure_limit = renew_failure_limit
         self._takeover_grace_seconds = takeover_grace_seconds
         self._in_flight_recovery_grace_seconds = in_flight_recovery_grace_seconds
@@ -101,6 +102,10 @@ class Worker:
     @property
     def paused_on_rate_limit(self) -> bool:
         return self._paused_on_rate_limit
+
+    @property
+    def cancel_requested_by_command(self) -> bool:
+        return self._cancel_requested_by_command
 
     # ---- Claim (must happen BEFORE any Telegram connection) --------------
 
@@ -234,6 +239,7 @@ class Worker:
 
                 if self._command == JobCommand.CANCEL:
                     self._command = JobCommand.NONE
+                    self._cancel_requested_by_command = True
                     log_event(
                         logger,
                         "WORKER_CANCELLED",

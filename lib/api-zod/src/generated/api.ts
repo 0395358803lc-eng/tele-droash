@@ -13,7 +13,11 @@ import * as zod from 'zod';
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
-  "status": zod.string()
+  "status": zod.string(),
+  "database": zod.object({
+  "ok": zod.boolean(),
+  "detail": zod.string().nullish()
+})
 })
 
 
@@ -133,27 +137,24 @@ export const checkTelegramAccountPhonesBodyMaxAttemptsMax = 10;
 export const checkTelegramAccountPhonesBodyMinRequestIntervalMin = 0.1;
 export const checkTelegramAccountPhonesBodyMinRequestIntervalMax = 60;
 
+export const checkTelegramAccountPhonesBodyJobNameMax = 120;
+
+export const checkTelegramAccountPhonesBodyPhoneRegionRegExp = new RegExp('^[A-Z]{2}$');
 
 
 export const CheckTelegramAccountPhonesBody = zod.object({
   "phones": zod.array(zod.string().min(checkTelegramAccountPhonesBodyPhonesItemMin)).min(1).max(checkTelegramAccountPhonesBodyPhonesMax),
   "maxAttempts": zod.number().min(1).max(checkTelegramAccountPhonesBodyMaxAttemptsMax).optional(),
-  "minRequestInterval": zod.number().min(checkTelegramAccountPhonesBodyMinRequestIntervalMin).max(checkTelegramAccountPhonesBodyMinRequestIntervalMax).optional()
+  "minRequestInterval": zod.number().min(checkTelegramAccountPhonesBodyMinRequestIntervalMin).max(checkTelegramAccountPhonesBodyMinRequestIntervalMax).optional(),
+  "jobName": zod.string().min(1).max(checkTelegramAccountPhonesBodyJobNameMax).optional(),
+  "phoneRegion": zod.string().regex(checkTelegramAccountPhonesBodyPhoneRegionRegExp).optional(),
+  "autoResume": zod.boolean().optional()
 })
 
 export const CheckTelegramAccountPhonesResponse = zod.object({
   "accountId": zod.string(),
-  "results": zod.array(zod.object({
-  "phone": zod.string(),
-  "status": zod.enum(['found', 'not_discoverable', 'error', 'rate_limited']),
-  "username": zod.string().nullish(),
-  "displayName": zod.string().nullish(),
-  "telegramId": zod.string().nullish(),
-  "lastOnline": zod.string().nullish(),
-  "errorMessage": zod.string().nullish(),
-  "retryAfterSeconds": zod.number().nullish(),
-  "checkedAt": zod.coerce.date()
-}))
+  "jobId": zod.string(),
+  "status": zod.enum(['queued'])
 })
 
 
@@ -175,7 +176,7 @@ export const ListTelegramJobsResponse = zod.object({
   "id": zod.string(),
   "accountId": zod.string(),
   "name": zod.string(),
-  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed']),
+  "status": zod.enum(['running', 'paused', 'queued', 'rate_limited', 'completed', 'failed', 'cancelled']),
   "total": zod.number(),
   "processed": zod.number(),
   "found": zod.number(),
@@ -185,58 +186,6 @@ export const ListTelegramJobsResponse = zod.object({
   "updatedAt": zod.coerce.date()
 }))
 })
-
-
-/**
- * @summary Save a completed Telegram check job and its results
- */
-export const createTelegramJobBodyNameMax = 120;
-
-export const createTelegramJobBodyResultsMax = 1000;
-
-
-
-export const CreateTelegramJobBody = zod.object({
-  "accountId": zod.string(),
-  "name": zod.string().min(1).max(createTelegramJobBodyNameMax),
-  "results": zod.array(zod.object({
-  "phone": zod.string(),
-  "status": zod.enum(['found', 'not_discoverable', 'invalid', 'error', 'rate_limited']),
-  "username": zod.string().nullish(),
-  "displayName": zod.string().nullish(),
-  "telegramId": zod.string().nullish(),
-  "lastOnline": zod.string().nullish(),
-  "errorMessage": zod.string().nullish(),
-  "retryAfterSeconds": zod.number().nullish(),
-  "checkedAt": zod.coerce.date()
-})).min(1).max(createTelegramJobBodyResultsMax)
-})
-
-export const CreateTelegramJobResponse = zod.object({
-  "id": zod.string(),
-  "accountId": zod.string(),
-  "name": zod.string(),
-  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed']),
-  "total": zod.number(),
-  "processed": zod.number(),
-  "found": zod.number(),
-  "notDiscoverable": zod.number(),
-  "errors": zod.number(),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
-}).and(zod.object({
-  "results": zod.array(zod.object({
-  "phone": zod.string(),
-  "status": zod.enum(['found', 'not_discoverable', 'invalid', 'error', 'rate_limited']),
-  "username": zod.string().nullish(),
-  "displayName": zod.string().nullish(),
-  "telegramId": zod.string().nullish(),
-  "lastOnline": zod.string().nullish(),
-  "errorMessage": zod.string().nullish(),
-  "retryAfterSeconds": zod.number().nullish(),
-  "checkedAt": zod.coerce.date()
-}))
-}))
 
 
 /**
@@ -250,7 +199,7 @@ export const GetTelegramJobResponse = zod.object({
   "id": zod.string(),
   "accountId": zod.string(),
   "name": zod.string(),
-  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed']),
+  "status": zod.enum(['running', 'paused', 'queued', 'rate_limited', 'completed', 'failed', 'cancelled']),
   "total": zod.number(),
   "processed": zod.number(),
   "found": zod.number(),
@@ -281,14 +230,14 @@ export const UpdateTelegramJobParams = zod.object({
 })
 
 export const UpdateTelegramJobBody = zod.object({
-  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed'])
+  "status": zod.enum(['running', 'paused'])
 })
 
 export const UpdateTelegramJobResponse = zod.object({
   "id": zod.string(),
   "accountId": zod.string(),
   "name": zod.string(),
-  "status": zod.enum(['running', 'paused', 'queued', 'completed', 'failed']),
+  "status": zod.enum(['running', 'paused', 'queued', 'rate_limited', 'completed', 'failed', 'cancelled']),
   "total": zod.number(),
   "processed": zod.number(),
   "found": zod.number(),

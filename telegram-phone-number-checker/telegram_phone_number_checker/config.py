@@ -34,11 +34,12 @@ class Config:
     api_hash: Optional[str] = None
     api_phone_number: Optional[str] = None
     proxy: Optional[str] = None
+    session_string: Optional[str] = None
 
     database_path: Path = field(
         default_factory=lambda: Path(os.getenv("DATABASE_PATH", "data/checker.db"))
     )
-    max_attempts: int = field(default_factory=lambda: _env_int("MAX_ATTEMPTS", 5))
+    max_attempts: int = field(default_factory=lambda: _env_int("MAX_ATTEMPTS", 3))
     base_retry_delay_seconds: int = field(
         default_factory=lambda: _env_int("BASE_RETRY_DELAY_SECONDS", 30)
     )

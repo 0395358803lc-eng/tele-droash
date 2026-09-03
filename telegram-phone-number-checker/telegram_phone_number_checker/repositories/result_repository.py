@@ -267,7 +267,7 @@ class ResultRepository:
                 job_id, original_phone, normalized_phone, status, attempt_count,
                 max_attempts, last_error_type, last_error_message, completed_at,
                 created_at, updated_at
-            ) VALUES (?, ?, NULL, ?, 0, 5, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, NULL, ?, 0, 3, ?, ?, ?, ?, ?)
             """,
             (
                 job_id,

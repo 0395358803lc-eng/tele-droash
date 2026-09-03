@@ -1,4 +1,4 @@
-export type JobStatus = 'running' | 'paused' | 'queued' | 'completed' | 'failed';
+export type JobStatus = 'running' | 'paused' | 'queued' | 'rate_limited' | 'completed' | 'failed' | 'cancelled';
 export type ResultStatus = 'found' | 'not_discoverable' | 'invalid' | 'error' | 'rate_limited';
 
 export interface Job {
@@ -28,7 +28,6 @@ export interface Result {
 }
 
 export interface Settings {
-  connectionConfigured: boolean;
   phoneRegion: string;
   maxAttempts: number;
   minRequestInterval: number;

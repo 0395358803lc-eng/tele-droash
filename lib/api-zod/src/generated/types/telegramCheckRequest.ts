@@ -23,4 +23,12 @@ export interface TelegramCheckRequest {
      * @maximum 60
      */
   minRequestInterval?: number;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  jobName?: string;
+  /** @pattern ^[A-Z]{2}$ */
+  phoneRegion?: string;
+  autoResume?: boolean;
 }

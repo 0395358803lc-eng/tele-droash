@@ -30,7 +30,6 @@ import type {
   TelegramCheckRequest,
   TelegramCheckResponse,
   TelegramJob,
-  TelegramJobInput,
   TelegramJobUpdate,
   TelegramJobWithResults,
   TelegramLoginStart,
@@ -99,7 +98,7 @@ export const getHealthCheckQueryKey = () => {
     }
 
 
-export const getHealthCheckQueryOptions = <TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getHealthCheckQueryOptions = <TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<HealthStatus>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -118,14 +117,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type HealthCheckQueryResult = NonNullable<Awaited<ReturnType<typeof healthCheck>>>
-export type HealthCheckQueryError = ErrorType<unknown>
+export type HealthCheckQueryError = ErrorType<HealthStatus>
 
 
 /**
  * @summary Health check
  */
 
-export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>(
+export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<HealthStatus>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -246,7 +245,7 @@ export const startTelegramAccountLogin = async (telegramLoginStart: TelegramLogi
 
 
 
-export const getStartTelegramAccountLoginMutationOptions = <TError = ErrorType<BadRequestResponse>,
+export const getStartTelegramAccountLoginMutationOptions = <TError = ErrorType<BadRequestResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTelegramAccountLogin>>, TError,{data: BodyType<TelegramLoginStart>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof startTelegramAccountLogin>>, TError,{data: BodyType<TelegramLoginStart>}, TContext> => {
 
@@ -275,12 +274,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type StartTelegramAccountLoginMutationResult = NonNullable<Awaited<ReturnType<typeof startTelegramAccountLogin>>>
     export type StartTelegramAccountLoginMutationBody = BodyType<TelegramLoginStart>
-    export type StartTelegramAccountLoginMutationError = ErrorType<BadRequestResponse>
+    export type StartTelegramAccountLoginMutationError = ErrorType<BadRequestResponse | Error>
 
     /**
  * @summary Start Telegram account login
  */
-export const useStartTelegramAccountLogin = <TError = ErrorType<BadRequestResponse>,
+export const useStartTelegramAccountLogin = <TError = ErrorType<BadRequestResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTelegramAccountLogin>>, TError,{data: BodyType<TelegramLoginStart>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof startTelegramAccountLogin>>,
@@ -318,7 +317,7 @@ export const completeTelegramAccountLogin = async (accountId: string,
 
 
 
-export const getCompleteTelegramAccountLoginMutationOptions = <TError = ErrorType<BadRequestResponse>,
+export const getCompleteTelegramAccountLoginMutationOptions = <TError = ErrorType<BadRequestResponse | NotFoundResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeTelegramAccountLogin>>, TError,{accountId: string;data: BodyType<TelegramLoginVerify>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof completeTelegramAccountLogin>>, TError,{accountId: string;data: BodyType<TelegramLoginVerify>}, TContext> => {
 
@@ -347,12 +346,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CompleteTelegramAccountLoginMutationResult = NonNullable<Awaited<ReturnType<typeof completeTelegramAccountLogin>>>
     export type CompleteTelegramAccountLoginMutationBody = BodyType<TelegramLoginVerify>
-    export type CompleteTelegramAccountLoginMutationError = ErrorType<BadRequestResponse>
+    export type CompleteTelegramAccountLoginMutationError = ErrorType<BadRequestResponse | NotFoundResponse>
 
     /**
  * @summary Submit Telegram OTP or two-step password
  */
-export const useCompleteTelegramAccountLogin = <TError = ErrorType<BadRequestResponse>,
+export const useCompleteTelegramAccountLogin = <TError = ErrorType<BadRequestResponse | NotFoundResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeTelegramAccountLogin>>, TError,{accountId: string;data: BodyType<TelegramLoginVerify>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof completeTelegramAccountLogin>>,
@@ -389,7 +388,7 @@ export const refreshTelegramAccountStatus = async (accountId: string, options?: 
 
 
 
-export const getRefreshTelegramAccountStatusMutationOptions = <TError = ErrorType<unknown>,
+export const getRefreshTelegramAccountStatusMutationOptions = <TError = ErrorType<NotFoundResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshTelegramAccountStatus>>, TError,{accountId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof refreshTelegramAccountStatus>>, TError,{accountId: string}, TContext> => {
 
@@ -418,12 +417,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type RefreshTelegramAccountStatusMutationResult = NonNullable<Awaited<ReturnType<typeof refreshTelegramAccountStatus>>>
 
-    export type RefreshTelegramAccountStatusMutationError = ErrorType<unknown>
+    export type RefreshTelegramAccountStatusMutationError = ErrorType<NotFoundResponse>
 
     /**
  * @summary Refresh Telegram account connection status
  */
-export const useRefreshTelegramAccountStatus = <TError = ErrorType<unknown>,
+export const useRefreshTelegramAccountStatus = <TError = ErrorType<NotFoundResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshTelegramAccountStatus>>, TError,{accountId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof refreshTelegramAccountStatus>>,
@@ -461,7 +460,7 @@ export const checkTelegramAccountPhones = async (accountId: string,
 
 
 
-export const getCheckTelegramAccountPhonesMutationOptions = <TError = ErrorType<Error>,
+export const getCheckTelegramAccountPhonesMutationOptions = <TError = ErrorType<BadRequestResponse | NotFoundResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkTelegramAccountPhones>>, TError,{accountId: string;data: BodyType<TelegramCheckRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof checkTelegramAccountPhones>>, TError,{accountId: string;data: BodyType<TelegramCheckRequest>}, TContext> => {
 
@@ -490,12 +489,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CheckTelegramAccountPhonesMutationResult = NonNullable<Awaited<ReturnType<typeof checkTelegramAccountPhones>>>
     export type CheckTelegramAccountPhonesMutationBody = BodyType<TelegramCheckRequest>
-    export type CheckTelegramAccountPhonesMutationError = ErrorType<Error>
+    export type CheckTelegramAccountPhonesMutationError = ErrorType<BadRequestResponse | NotFoundResponse | Error>
 
     /**
  * @summary Check phone numbers with a connected Telegram account
  */
-export const useCheckTelegramAccountPhones = <TError = ErrorType<Error>,
+export const useCheckTelegramAccountPhones = <TError = ErrorType<BadRequestResponse | NotFoundResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkTelegramAccountPhones>>, TError,{accountId: string;data: BodyType<TelegramCheckRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof checkTelegramAccountPhones>>,
@@ -532,7 +531,7 @@ export const deleteTelegramAccount = async (accountId: string, options?: Paramet
 
 
 
-export const getDeleteTelegramAccountMutationOptions = <TError = ErrorType<unknown>,
+export const getDeleteTelegramAccountMutationOptions = <TError = ErrorType<NotFoundResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTelegramAccount>>, TError,{accountId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof deleteTelegramAccount>>, TError,{accountId: string}, TContext> => {
 
@@ -561,12 +560,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type DeleteTelegramAccountMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTelegramAccount>>>
 
-    export type DeleteTelegramAccountMutationError = ErrorType<unknown>
+    export type DeleteTelegramAccountMutationError = ErrorType<NotFoundResponse | Error>
 
     /**
  * @summary Delete Telegram account and its encrypted session
  */
-export const useDeleteTelegramAccount = <TError = ErrorType<unknown>,
+export const useDeleteTelegramAccount = <TError = ErrorType<NotFoundResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTelegramAccount>>, TError,{accountId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteTelegramAccount>>,
@@ -653,77 +652,6 @@ export function useListTelegramJobs<TData = Awaited<ReturnType<typeof listTelegr
 
 
 
-
-export const getCreateTelegramJobUrl = () => {
-
-
-
-
-  return `/api/jobs`
-}
-
-/**
- * @summary Save a completed Telegram check job and its results
- */
-export const createTelegramJob = async (telegramJobInput: TelegramJobInput, options?: Parameters<typeof customFetch>[1]): Promise<TelegramJobWithResults> => {
-
-  return customFetch<TelegramJobWithResults>(getCreateTelegramJobUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(telegramJobInput)
-  }
-);}
-
-
-
-
-
-export const getCreateTelegramJobMutationOptions = <TError = ErrorType<BadRequestResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTelegramJob>>, TError,{data: BodyType<TelegramJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof createTelegramJob>>, TError,{data: BodyType<TelegramJobInput>}, TContext> => {
-
-const mutationKey = ['createTelegramJob'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTelegramJob>>, {data: BodyType<TelegramJobInput>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  createTelegramJob(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type CreateTelegramJobMutationResult = NonNullable<Awaited<ReturnType<typeof createTelegramJob>>>
-    export type CreateTelegramJobMutationBody = BodyType<TelegramJobInput>
-    export type CreateTelegramJobMutationError = ErrorType<BadRequestResponse>
-
-    /**
- * @summary Save a completed Telegram check job and its results
- */
-export const useCreateTelegramJob = <TError = ErrorType<BadRequestResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTelegramJob>>, TError,{data: BodyType<TelegramJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof createTelegramJob>>,
-        TError,
-        {data: BodyType<TelegramJobInput>},
-        TContext
-      > => {
-      return useMutation(getCreateTelegramJobMutationOptions(options));
-    }
 
 export const getGetTelegramJobUrl = (jobId: string,) => {
 
@@ -829,7 +757,7 @@ export const updateTelegramJob = async (jobId: string,
 
 
 
-export const getUpdateTelegramJobMutationOptions = <TError = ErrorType<NotFoundResponse>,
+export const getUpdateTelegramJobMutationOptions = <TError = ErrorType<BadRequestResponse | NotFoundResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTelegramJob>>, TError,{jobId: string;data: BodyType<TelegramJobUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateTelegramJob>>, TError,{jobId: string;data: BodyType<TelegramJobUpdate>}, TContext> => {
 
@@ -858,12 +786,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type UpdateTelegramJobMutationResult = NonNullable<Awaited<ReturnType<typeof updateTelegramJob>>>
     export type UpdateTelegramJobMutationBody = BodyType<TelegramJobUpdate>
-    export type UpdateTelegramJobMutationError = ErrorType<NotFoundResponse>
+    export type UpdateTelegramJobMutationError = ErrorType<BadRequestResponse | NotFoundResponse | Error>
 
     /**
  * @summary Update the persisted job status
  */
-export const useUpdateTelegramJob = <TError = ErrorType<NotFoundResponse>,
+export const useUpdateTelegramJob = <TError = ErrorType<BadRequestResponse | NotFoundResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTelegramJob>>, TError,{jobId: string;data: BodyType<TelegramJobUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updateTelegramJob>>,
@@ -900,7 +828,7 @@ export const deleteTelegramJob = async (jobId: string, options?: Parameters<type
 
 
 
-export const getDeleteTelegramJobMutationOptions = <TError = ErrorType<NotFoundResponse>,
+export const getDeleteTelegramJobMutationOptions = <TError = ErrorType<NotFoundResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTelegramJob>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof deleteTelegramJob>>, TError,{jobId: string}, TContext> => {
 
@@ -929,12 +857,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type DeleteTelegramJobMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTelegramJob>>>
 
-    export type DeleteTelegramJobMutationError = ErrorType<NotFoundResponse>
+    export type DeleteTelegramJobMutationError = ErrorType<NotFoundResponse | Error>
 
     /**
  * @summary Delete a persisted Telegram check job
  */
-export const useDeleteTelegramJob = <TError = ErrorType<NotFoundResponse>,
+export const useDeleteTelegramJob = <TError = ErrorType<NotFoundResponse | Error>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTelegramJob>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteTelegramJob>>,

@@ -12,6 +12,7 @@ export type TelegramCheckResultStatus = typeof TelegramCheckResultStatus[keyof t
 export const TelegramCheckResultStatus = {
   found: 'found',
   not_discoverable: 'not_discoverable',
+  invalid: 'invalid',
   error: 'error',
   rate_limited: 'rate_limited',
 } as const;
