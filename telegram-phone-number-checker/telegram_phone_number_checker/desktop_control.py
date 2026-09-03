@@ -73,7 +73,7 @@ def _create(payload: dict[str, Any]) -> dict[str, Any]:
         for raw, normalized in valid:
             result_repo.insert(job_id, raw, normalized, max_attempts)
         for raw in invalid:
-            result_repo.insert_invalid(job_id, raw)
+            result_repo.insert_invalid(job_id, raw, max_attempts)
         job_repo.reconcile_stats(job_id)
         return {"jobId": job_id, "status": "CREATED", "total": total}
     finally:

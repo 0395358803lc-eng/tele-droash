@@ -226,3 +226,83 @@ def test_pause_then_resume_requires_old_worker_to_release_lease(tmp_path: Path):
     assert resumed.requested_command == "NONE"
     assert not jobs.has_live_worker_lease("job-pause")
     db.close()
+
+
+def test_stale_running_job_honors_auto_resume_false_after_recovery(tmp_path: Path):
+    db_path = tmp_path / "checker.db"
+    db = Database(db_path)
+    jobs = JobRepository(db)
+    results = ResultRepository(db)
+    jobs.create("job-stale-no-resume", "stale no resume", 1)
+    results.insert("job-stale-no-resume", "+84900000008", "+84900000008", 3)
+    assert jobs.claim_worker("job-stale-no-resume", "dead-worker", 60)
+    assert jobs.mark_started_if_owned("job-stale-no-resume", "dead-worker")
+    db.execute(
+        "UPDATE jobs SET worker_lease_until = ? WHERE id = ?",
+        (iso_from_offset(-5), "job-stale-no-resume"),
+    )
+    db.commit()
+
+    cfg = Config(
+        api_id="1",
+        api_hash="hash",
+        api_phone_number="+84900000008",
+        database_path=db_path,
+        auto_resume=False,
+    )
+    manager = JobManager(cfg, db)
+    telegram = NeverConnectTelegram()
+
+    async def run_case():
+        with pytest.raises(JobPausedError):
+            await manager.run(
+                "job-stale-no-resume",
+                auto_resume=False,
+                telegram_factory=lambda: telegram,
+            )
+
+    asyncio.run(run_case())
+    current = jobs.get("job-stale-no-resume")
+    assert current is not None
+    assert current.status == JobStatus.PAUSED
+    assert current.worker_id is None
+    assert current.worker_lease_until is None
+    assert telegram.connected is False
+    db.close()
+
+
+def test_terminal_only_job_completes_without_telegram_connection(tmp_path: Path):
+    db_path = tmp_path / "checker.db"
+    db = Database(db_path)
+    jobs = JobRepository(db)
+    results = ResultRepository(db)
+    jobs.create("job-terminal-only", "terminal only", 1)
+    results.insert_invalid("job-terminal-only", "invalid-number", max_attempts=1)
+    jobs.reconcile_stats("job-terminal-only")
+
+    cfg = Config(
+        api_id="1",
+        api_hash="hash",
+        api_phone_number="+84900000009",
+        database_path=db_path,
+        auto_resume=True,
+    )
+    manager = JobManager(cfg, db)
+    telegram = NeverConnectTelegram()
+
+    async def run_case():
+        status = await manager.run(
+            "job-terminal-only",
+            auto_resume=True,
+            telegram_factory=lambda: telegram,
+        )
+        assert status == JobStatus.COMPLETED
+
+    asyncio.run(run_case())
+    current = jobs.get("job-terminal-only")
+    assert current is not None
+    assert current.status == JobStatus.COMPLETED
+    assert current.worker_id is None
+    assert current.worker_lease_until is None
+    assert telegram.connected is False
+    db.close()

@@ -126,9 +126,20 @@ class JobManager:
                     f"Job {job_id} already has a live worker. Pause it first."
                 )
 
-        # recover any interrupted items (only when no live worker owns the job;
-        # this is guaranteed here because run() refuses RUNNING+live-leased jobs)
+        # Recover any interrupted items (only when no live worker owns the job;
+        # this is guaranteed here because run() refuses RUNNING+live-leased jobs).
         await self.recover(job_id)
+
+        # Recovery may have changed RUNNING/RATE_LIMITED -> PAUSED, so always
+        # reload before making resume/terminal decisions. Using the stale object
+        # here would incorrectly bypass auto_resume=False after a crash.
+        job = self._job_repo.get(job_id)
+        if job is None:
+            raise ValueError(f"Unknown job: {job_id}")
+
+        if job.status in (JobStatus.COMPLETED, JobStatus.CANCELLED):
+            return job.status
+
         # Load any persisted FloodWait cooldown from a previous run.
         self._rate_limiter.initialize()
 
@@ -137,6 +148,21 @@ class JobManager:
             raise JobPausedError(
                 f"Job {job_id} is PAUSED. Resume it with 'job resume' or set AUTO_RESUME=true."
             )
+
+        # A job can already be fully terminal before a worker starts (for
+        # example an invalid-only batch). If nobody owns it, finalize directly
+        # without opening a Telegram session or acquiring an account lease.
+        if (
+            not self._job_repo.has_live_worker_lease(job_id)
+            and not self._job_repo.has_live_account_lease_for_job(job_id)
+        ):
+            self._job_repo.reconcile_stats(job_id)
+            if not self._result_repo.has_unfinished_items(job_id):
+                self._job_repo.update_status(job_id, JobStatus.COMPLETED)
+                self._job_repo.clear_requested_command(job_id)
+                self._job_repo.clear_worker_ownership(job_id)
+                log_event(logger, "JOB_COMPLETED_WITHOUT_WORKER", job_id=job_id)
+                return JobStatus.COMPLETED
 
         telegram = (
             telegram_factory()

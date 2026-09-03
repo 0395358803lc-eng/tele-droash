@@ -3,19 +3,23 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 if (-not $env:SESSION_SECRET) {
-  throw 'SESSION_SECRET is required. Example: $env:SESSION_SECRET = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 })) is NOT recommended for persistence; configure a stable secret securely.'
+  $env:SESSION_SECRET = [Environment]::GetEnvironmentVariable('SESSION_SECRET', 'User')
 }
-
+if (-not $env:DATABASE_PATH) {
+  $env:DATABASE_PATH = [Environment]::GetEnvironmentVariable('DATABASE_PATH', 'User')
+}
 if (-not $env:DATABASE_PATH) {
   $env:DATABASE_PATH = Join-Path $root 'data\checker.db'
 }
+if (-not $env:SESSION_SECRET -or $env:SESSION_SECRET.Length -lt 32) {
+  throw 'SESSION_SECRET is missing or too short. Run: pnpm desktop:setup'
+}
 
 $venvPython = Join-Path $root 'telegram-phone-number-checker\.venv\Scripts\python.exe'
-if (Test-Path $venvPython) {
-  $env:PYTHON_BIN = $venvPython
-} elseif (-not $env:PYTHON_BIN) {
-  $env:PYTHON_BIN = 'python'
+if (-not (Test-Path $venvPython)) {
+  throw 'Project Python virtual environment is missing. Run: pnpm desktop:setup'
 }
+$env:PYTHON_BIN = $venvPython
 
 $apiEnv = @{
   SESSION_SECRET = $env:SESSION_SECRET
@@ -25,7 +29,6 @@ $apiEnv = @{
   HOST = '127.0.0.1'
   NODE_ENV = 'development'
 }
-
 $frontendEnv = @{
   PORT = '5173'
   BASE_PATH = '/'
@@ -43,6 +46,7 @@ $apiCommand = (New-EnvPrefix $apiEnv) + " Set-Location " + (ConvertTo-Json $root
 $webCommand = (New-EnvPrefix $frontendEnv) + " Set-Location " + (ConvertTo-Json $root -Compress) + "; pnpm --filter @workspace/telegram-checker run dev"
 
 Write-Host ('SQLite database: ' + $env:DATABASE_PATH)
+Write-Host ('Python: ' + $env:PYTHON_BIN)
 Write-Host 'Starting API at http://127.0.0.1:3000'
 Write-Host 'Starting dashboard at http://127.0.0.1:5173'
 

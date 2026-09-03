@@ -9,11 +9,20 @@
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "desktop:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-dev.ps1",
     "desktop:check": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-check.ps1",
-    "desktop:backup": "python ./scripts/backup_sqlite.py"
+    "desktop:backup": "python ./scripts/backup_sqlite.py",
+    "desktop:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-setup.ps1",
+    "desktop:start": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-start.ps1",
+    "desktop:audit": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-audit.ps1"
   },
   "private": true,
   "devDependencies": {
+    "concurrently": "^10.0.5",
     "prettier": "^3.9.6",
     "typescript": "~5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "qs": "6.16.0"
+    }
   }
 }

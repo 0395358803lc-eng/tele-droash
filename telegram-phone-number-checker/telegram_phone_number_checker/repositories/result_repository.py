@@ -256,7 +256,11 @@ class ResultRepository:
         )
 
     def insert_invalid(
-        self, job_id: str, original_phone: str, error_message: Optional[str] = None
+        self,
+        job_id: str,
+        original_phone: str,
+        max_attempts: int = 3,
+        error_message: Optional[str] = None,
     ) -> CheckItem:
         """Insert a phone that is permanently invalid (never sent to Telegram)
         directly as PERMANENT_ERROR."""
@@ -267,12 +271,13 @@ class ResultRepository:
                 job_id, original_phone, normalized_phone, status, attempt_count,
                 max_attempts, last_error_type, last_error_message, completed_at,
                 created_at, updated_at
-            ) VALUES (?, ?, NULL, ?, 0, 3, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, NULL, ?, 0, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job_id,
                 original_phone,
                 CheckStatus.PERMANENT_ERROR.value,
+                max_attempts,
                 ErrorType.INVALID_PHONE.value,
                 error_message or "Invalid phone number (not sent to Telegram)",
                 now,
@@ -287,8 +292,9 @@ class ResultRepository:
             original_phone=original_phone,
             normalized_phone=None,
             status=CheckStatus.PERMANENT_ERROR,
+            max_attempts=max_attempts,
             last_error_type=ErrorType.INVALID_PHONE.value,
-            last_error_message=error_message,
+            last_error_message=error_message or "Invalid phone number (not sent to Telegram)",
             created_at=now,
             updated_at=now,
         )

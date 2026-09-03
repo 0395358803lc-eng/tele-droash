@@ -46,7 +46,7 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
-# Replit
+# tool caches
 .cache/
 .local/
 
@@ -55,3 +55,7 @@ Thumbs.db
 telegram-phone-number-checker/data/
 *.db-wal
 *.db-shm
+
+# Python virtual environments
+.venv/
+**/.venv/

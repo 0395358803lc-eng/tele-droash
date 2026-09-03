@@ -4,44 +4,58 @@ Set-Location $root
 
 Write-Host '== Telegram Checker Desktop validation =='
 
-$required = @('node','pnpm','python')
-foreach ($tool in $required) {
+foreach ($tool in @('node','pnpm')) {
   if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
     throw "Required tool not found in PATH: $tool"
   }
 }
 
-$venvPython = Join-Path $root 'telegram-phone-number-checker\.venv\Scripts\python.exe'
-$pythonBin = if (Test-Path $venvPython) { $venvPython } else { (Get-Command python).Source }
-$env:PYTHON_BIN = $pythonBin
-
-Write-Host ("Node:   " + (node --version))
-Write-Host ("pnpm:   " + (pnpm --version))
-Write-Host ("Python: " + (& $pythonBin --version))
-Write-Host ("Python executable: " + $pythonBin)
-
-if (-not $env:SESSION_SECRET -or $env:SESSION_SECRET.Length -lt 32) {
-  throw 'SESSION_SECRET must be stable and contain at least 32 characters.'
+if (-not $env:SESSION_SECRET) {
+  $env:SESSION_SECRET = [Environment]::GetEnvironmentVariable('SESSION_SECRET', 'User')
 }
-
+if (-not $env:DATABASE_PATH) {
+  $env:DATABASE_PATH = [Environment]::GetEnvironmentVariable('DATABASE_PATH', 'User')
+}
 if (-not $env:DATABASE_PATH) {
   $env:DATABASE_PATH = Join-Path $root 'data\checker.db'
 }
+if (-not $env:SESSION_SECRET -or $env:SESSION_SECRET.Length -lt 32) {
+  throw 'SESSION_SECRET is missing or too short. Run: pnpm desktop:setup'
+}
 
+$venvPython = Join-Path $root 'telegram-phone-number-checker\.venv\Scripts\python.exe'
+if (-not (Test-Path $venvPython)) {
+  throw 'Project Python virtual environment is missing. Run: pnpm desktop:setup'
+}
+$env:PYTHON_BIN = $venvPython
+
+Write-Host ("Node:   " + (node --version))
+Write-Host ("pnpm:   " + (pnpm --version))
+Write-Host ("Python: " + (& $venvPython --version))
+Write-Host ("Python executable: " + $venvPython)
 Write-Host ("SQLite: " + $env:DATABASE_PATH)
 
 $pythonProject = Join-Path $root 'telegram-phone-number-checker'
 Push-Location $pythonProject
 try {
-  & $pythonBin -c "import telethon, phonenumbers, dotenv, telegram_phone_number_checker" 2>$null
-  if ($LASTEXITCODE -ne 0) {
-    throw 'Python runtime dependencies are missing. Install dependencies for telegram-phone-number-checker.'
-  }
+  & $venvPython -m pip check
+  if ($LASTEXITCODE -ne 0) { throw 'Python dependency consistency check failed.' }
 
-  & $pythonBin -m compileall -q .\telegram_phone_number_checker
+  & $venvPython -c "import telethon, phonenumbers, dotenv, telegram_phone_number_checker"
+  if ($LASTEXITCODE -ne 0) { throw 'Python runtime dependency import check failed.' }
+
+  & $venvPython -m compileall -q .\telegram_phone_number_checker
   if ($LASTEXITCODE -ne 0) { throw 'Python compile check failed.' }
+
+  & $venvPython -m pytest -q
+  if ($LASTEXITCODE -ne 0) { throw 'Python tests failed.' }
 } finally {
   Pop-Location
+}
+
+if (Test-Path $env:DATABASE_PATH) {
+  & $venvPython -c "import sqlite3,sys; p=sys.argv[1]; c=sqlite3.connect(p); r=c.execute('PRAGMA quick_check').fetchone(); c.close(); assert r and r[0]=='ok', r; print('SQLite quick_check: ok')" $env:DATABASE_PATH
+  if ($LASTEXITCODE -ne 0) { throw 'SQLite integrity check failed.' }
 }
 
 pnpm run typecheck

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --config vite.config.ts --host 127.0.0.1",
     "build": "vite build --config vite.config.ts",
-    "serve": "vite preview --config vite.config.ts --host 127.0.0.1",
+    "serve": "vite preview --config vite.config.ts --host 127.0.0.1 --port 5173 --strictPort",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
