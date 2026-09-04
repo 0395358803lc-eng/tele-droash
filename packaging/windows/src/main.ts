@@ -278,9 +278,9 @@ async function startDesktop(): Promise<void> {
   await migrateLegacyDatabase(legacyDatabasePath, databasePath);
 
   const [{ default: api }, dbModule, engineModule] = await Promise.all([
-    import("../../artifacts/api-server/src/app"),
+    import("../../../artifacts/api-server/src/app"),
     import("@workspace/db"),
-    import("../../artifacts/api-server/src/lib/desktop-engine"),
+    import("../../../artifacts/api-server/src/lib/desktop-engine"),
   ]);
 
   runtimeCloseDatabase = dbModule.closeDatabase;
