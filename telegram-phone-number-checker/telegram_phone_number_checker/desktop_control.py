@@ -112,6 +112,15 @@ def _pause(payload: dict[str, Any]) -> dict[str, Any]:
         db.close()
 
 
+def _suspend(payload: dict[str, Any]) -> dict[str, Any]:
+    db = _db(payload)
+    try:
+        JobController(db).suspend(str(payload["jobId"]))
+        return _status_with_db(db, str(payload["jobId"]))
+    finally:
+        db.close()
+
+
 def _resume(payload: dict[str, Any]) -> dict[str, Any]:
     db = _db(payload)
     try:
@@ -233,6 +242,7 @@ def main() -> int:
         "status": _status,
         "results": _results,
         "pause": _pause,
+        "suspend": _suspend,
         "resume": _resume,
         "cancel": _cancel,
         "delete": _delete,
