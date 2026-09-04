@@ -2,6 +2,11 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+$nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
+if ($LASTEXITCODE -ne 0 -or $nodeMajor -lt 22) {
+  throw 'Node.js 22 or newer is required. Run setup.bat to install the supported version.'
+}
+
 if (-not $env:SESSION_SECRET) {
   $env:SESSION_SECRET = [Environment]::GetEnvironmentVariable('SESSION_SECRET', 'User')
 }
