@@ -39,3 +39,7 @@ jobs:
       - name: Run one-click setup and validation
         shell: cmd
         run: setup.bat --no-pause
+
+      - name: Verify installed runtime independently
+        shell: pwsh
+        run: pnpm desktop:check
