@@ -283,13 +283,13 @@ function verifyPackagedEngine(): void {
 
 async function runPackagedSmokeTest(origin: string): Promise<void> {
   verifyPackagedEngine();
-  const response = await fetch(`${origin}/api/health`);
+  const response = await fetch(`${origin}/api/healthz`);
   if (!response.ok) {
     throw new Error(`Packaged API health check failed with HTTP ${response.status}.`);
   }
 
-  const body = (await response.json()) as { ok?: boolean };
-  if (!body.ok) {
+  const body = (await response.json()) as { status?: string };
+  if (body.status !== "ok") {
     throw new Error("Packaged API health response was unhealthy.");
   }
 
