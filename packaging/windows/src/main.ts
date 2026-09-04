@@ -5,6 +5,7 @@ import {
   shell,
 } from "electron";
 import { randomBytes } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { Server } from "node:http";
@@ -25,6 +26,7 @@ let runtimeSuspendWorkers:
   | null = null;
 let shutdownStarted = false;
 let allowQuit = false;
+const smokeTestMode = process.env.TELEGRAM_CHECKER_SMOKE_TEST === "1";
 
 function devProjectRoot(): string {
   return path.resolve(import.meta.dirname, "../../..");
@@ -257,6 +259,45 @@ function createMainWindow(origin: string): BrowserWindow {
   return window;
 }
 
+function verifyPackagedEngine(): void {
+  const engine = process.env.TELEGRAM_ENGINE_EXE?.trim();
+  if (!engine) return;
+
+  const result = spawnSync(engine, ["self-test"], {
+    windowsHide: true,
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `Packaged Telegram engine self-test failed: ${result.stderr || result.stdout}`,
+    );
+  }
+
+  const parsed = JSON.parse(result.stdout || "{}") as { ok?: boolean };
+  if (!parsed.ok) {
+    throw new Error("Packaged Telegram engine self-test returned unhealthy JSON.");
+  }
+}
+
+async function runPackagedSmokeTest(origin: string): Promise<void> {
+  verifyPackagedEngine();
+  const response = await fetch(`${origin}/api/health`);
+  if (!response.ok) {
+    throw new Error(`Packaged API health check failed with HTTP ${response.status}.`);
+  }
+
+  const body = (await response.json()) as { ok?: boolean };
+  if (!body.ok) {
+    throw new Error("Packaged API health response was unhealthy.");
+  }
+
+  await shutdownRuntime();
+  allowQuit = true;
+  electronApp.exit(0);
+}
+
 async function startDesktop(): Promise<void> {
   const legacyDatabasePath = process.env.DATABASE_PATH;
   const legacySessionSecret = process.env.SESSION_SECRET;
@@ -297,6 +338,12 @@ async function startDesktop(): Promise<void> {
 
   const listening = await listen(api);
   httpServer = listening.server;
+
+  if (smokeTestMode) {
+    await runPackagedSmokeTest(listening.origin);
+    return;
+  }
+
   mainWindow = createMainWindow(listening.origin);
   mainWindow.on("closed", () => {
     mainWindow = null;
