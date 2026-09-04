@@ -108,7 +108,7 @@ function runBridge(payload: Record<string, unknown>): Promise<BridgeResult> {
       child.kill("SIGKILL");
       reject(new Error("Telegram request timed out."));
     }, timeoutMs);
-    child.stdout.on("data", (chunk) => {
+    child.stdout?.on("data", (chunk) => {
       stdout += chunk.toString();
       if (Buffer.byteLength(stdout, "utf8") > maxStdoutBytes) {
         child.kill("SIGKILL");
@@ -132,7 +132,7 @@ function runBridge(payload: Record<string, unknown>): Promise<BridgeResult> {
         reject(new Error("Telegram engine returned an invalid response."));
       }
     });
-    child.stdin.end(JSON.stringify(payload));
+    child.stdin?.end(JSON.stringify(payload));
   });
 }
 
