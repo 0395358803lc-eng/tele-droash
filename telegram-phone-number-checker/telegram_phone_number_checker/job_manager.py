@@ -84,6 +84,11 @@ class JobManager:
                 )
             self._job_repo.clear_worker_ownership(job_id)
             self._job_repo.update_status(job_id, JobStatus.PAUSED)
+            # SUSPEND is a process-lifecycle signal, not a durable user intent.
+            # Once startup recovery has converted the stale active job to PAUSED,
+            # clear the old command so autoResume can start a fresh worker.
+            if self._job_repo.get_requested_command(job_id) == "SUSPEND":
+                self._job_repo.clear_requested_command(job_id)
             log_event(logger, "JOB_RECOVERED_TO_PAUSED", job_id=job_id)
 
         # Safe: no live worker holds a lease -> reset leftover PROCESSING items.
@@ -495,12 +500,10 @@ class JobController:
             raise ValueError(f"Unknown job: {job_id}")
         if job.status in (JobStatus.COMPLETED, JobStatus.CANCELLED):
             return
-        if self._job_repo.has_live_worker_lease(job_id):
-            self._job_repo.set_requested_command(job_id, "SUSPEND")
-            return
-        # No live owner remains. Do not turn this into a manual PAUSE or CANCEL;
-        # startup recovery owns the next transition for active statuses.
-        self._job_repo.clear_requested_command(job_id)
+        # Persist SUSPEND even if the worker process is still between
+        # process startup and lease claim. mark_started_if_owned() deliberately
+        # preserves this command so the first worker loop will stop immediately.
+        self._job_repo.set_requested_command(job_id, "SUSPEND")
 
     def resume(self, job_id: str) -> None:
         job = self._job_repo.get(job_id)
