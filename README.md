@@ -10,7 +10,7 @@ After cloning or downloading the repository on Windows, double-click:
 setup.bat
 ```
 
-`setup.bat` is the recommended one-click bootstrap. It checks for Node.js 20+, Python 3.11+, and the project-tested `pnpm` version. When Node.js or Python is missing, it installs them through Windows Package Manager (`winget`). It then installs the Node workspace, creates the isolated Python environment at `telegram-phone-number-checker/.venv`, installs Python dependencies, configures the persistent Windows-user `SESSION_SECRET` / `DATABASE_PATH` / `PYTHON_BIN`, and runs the complete validation suite.
+`setup.bat` is the recommended one-click bootstrap. It checks for Node.js 20+, Python 3.11+, and the project-tested `pnpm` version. When Node.js or Python is missing, it installs them through Windows Package Manager (`winget`). It then installs the Node workspace, creates the isolated Python environment at `telegram-phone-number-checker/.venv`, installs the hash-locked Python runtime/test dependencies, configures the persistent Windows-user `SESSION_SECRET` / `DATABASE_PATH` / `PYTHON_BIN`, and runs the complete validation suite.
 
 If `winget` is unavailable on a machine that is missing Node.js or Python, install/update **App Installer** from Microsoft Store and run `setup.bat` again.
 
@@ -95,4 +95,6 @@ pnpm desktop:audit
 pnpm desktop:backup
 ```
 
-`desktop:audit` requires internet access. `desktop:check` does not rely on vulnerability feeds and is suitable for routine local validation.
+`desktop:audit` requires internet access and runs `pip-audit` in a separate environment so audit tooling cannot mutate the application virtual environment. `desktop:check` does not rely on vulnerability feeds and is suitable for routine local validation.
+
+GitHub Actions also runs the Windows one-click setup and validation workflow on pushes to `main` / `fix/**` and on pull requests targeting `main`.
