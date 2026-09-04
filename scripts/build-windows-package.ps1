@@ -36,9 +36,7 @@ if ($LASTEXITCODE -ne 0) { throw "Dashboard build failed." }
 & (Join-Path $root "scripts\build-python-engine.ps1")
 if ($LASTEXITCODE -ne 0) { throw "Python engine build failed." }
 
-if (Test-Path $releaseDir) {
-  Remove-Item $releaseDir -Recurse -Force
-}
+if (Test-Path $releaseDir) { Remove-Item $releaseDir -Recurse -Force }
 
 Push-Location $packagingDir
 try {
@@ -48,30 +46,20 @@ try {
     }
 
     npm version $Version --no-git-tag-version --allow-same-version
-    if ($LASTEXITCODE -ne 0) {
-      throw "Failed to set Windows package version."
-    }
+    if ($LASTEXITCODE -ne 0) { throw "Failed to set Windows package version." }
   }
 
   npm install --no-audit --no-fund --package-lock=false
-  if ($LASTEXITCODE -ne 0) {
-    throw "Electron packaging dependencies failed to install."
-  }
+  if ($LASTEXITCODE -ne 0) { throw "Electron packaging dependencies failed to install." }
 
   npm run build
-  if ($LASTEXITCODE -ne 0) {
-    throw "Electron main-process bundle failed."
-  }
+  if ($LASTEXITCODE -ne 0) { throw "Electron main-process bundle failed." }
 
   npx electron-builder install-app-deps
-  if ($LASTEXITCODE -ne 0) {
-    throw "Electron native dependency rebuild failed."
-  }
+  if ($LASTEXITCODE -ne 0) { throw "Electron native dependency rebuild failed." }
 
   npm run dist:win -- --publish never
-  if ($LASTEXITCODE -ne 0) {
-    throw "Windows installer build failed."
-  }
+  if ($LASTEXITCODE -ne 0) { throw "Windows installer build failed." }
 } finally {
   Pop-Location
 }
@@ -97,9 +85,7 @@ $setupHash
 $portableHash
 
 & (Join-Path $root "scripts\smoke-windows-package.ps1")
-if ($LASTEXITCODE -ne 0) {
-  throw "Packaged runtime smoke test failed."
-}
+if ($LASTEXITCODE -ne 0) { throw "Packaged runtime smoke test failed." }
 
 Write-Host ("Installer: " + $setup.FullName)
 Write-Host ("Portable:  " + $portable.FullName)
