@@ -22,6 +22,25 @@ const accountJobStarts = new Set<string>();
 
 class AccountStartConflictError extends Error {}
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForAccountWorkerClaim(
+  phoneNumber: string,
+  jobId: string,
+  timeoutMs = 2_000,
+): Promise<"claimed" | "busy" | "timeout"> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const worker = getLiveAccountWorker(phoneNumber);
+    if (worker?.jobId === jobId) return "claimed";
+    if (worker && worker.jobId !== jobId) return "busy";
+    await delay(50);
+  }
+  return "timeout";
+}
+
 const bridgePath = path.resolve(
   import.meta.dirname,
   "../../../telegram-phone-number-checker/telegram_phone_number_checker/api_bridge.py",
@@ -406,6 +425,13 @@ router.post("/telegram-accounts/:accountId/check", async (req, res) => {
         autoResume,
       },
     );
+
+    const claimState = await waitForAccountWorkerClaim(account.phoneNumber, jobId);
+    if (claimState === "busy") {
+      throw new AccountStartConflictError(
+        "Another durable worker claimed this Telegram account first.",
+      );
+    }
 
     try {
       await db
