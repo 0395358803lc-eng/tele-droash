@@ -171,8 +171,10 @@ function waitForWorkerExit(
       resolve(value);
     };
     const onExit = () => finish(true);
+    // Keep this timer referenced: during application shutdown the worker is
+    // detached/unref'ed, so this wait is what keeps Node alive long enough to
+    // observe a graceful worker exit before falling back to force termination.
     const timer = setTimeout(() => finish(false), timeoutMs);
-    timer.unref();
     child.once("exit", onExit);
   });
 }
