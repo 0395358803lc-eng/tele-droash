@@ -427,7 +427,12 @@ class JobRepository:
         cur = self.db.execute(
             """
             UPDATE jobs
-            SET status = ?, requested_command = 'NONE', started_at = ?, updated_at = ?
+            SET status = ?,
+                requested_command = CASE
+                    WHEN requested_command = 'SUSPEND' THEN 'SUSPEND'
+                    ELSE 'NONE'
+                END,
+                started_at = ?, updated_at = ?
             WHERE id = ? AND worker_id = ? AND worker_lease_until > ?
             """,
             (JobStatus.RUNNING.value, now, now, job_id, worker_id, now),
