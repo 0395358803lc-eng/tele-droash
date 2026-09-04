@@ -1,5 +1,6 @@
 param(
-  [switch]$SkipValidation
+  [switch]$SkipValidation,
+  [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +40,53 @@ if (Test-Path $releaseDir) { Remove-Item $releaseDir -Recurse -Force }
 
 Push-Location $packagingDir
 try {
+  if ($Version) {
+    if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?  if ($LASTEXITCODE -ne 0) { throw "Electron packaging dependencies failed to install." }
+
+  npm run build
+  if ($LASTEXITCODE -ne 0) { throw "Electron main-process bundle failed." }
+
+  npx electron-builder install-app-deps
+  if ($LASTEXITCODE -ne 0) { throw "Electron native dependency rebuild failed." }
+
+  npm run dist:win -- --publish never
+  if ($LASTEXITCODE -ne 0) { throw "Windows installer build failed." }
+} finally {
+  Pop-Location
+}
+
+$setup = Get-ChildItem $releaseDir -Filter "Telegram-Checker-Setup-*.exe" -File | Select-Object -First 1
+$portable = Get-ChildItem $releaseDir -Filter "Telegram-Checker-Portable-*.exe" -File | Select-Object -First 1
+
+if (-not $setup) { throw "NSIS installer artifact was not created." }
+if (-not $portable) { throw "Portable executable artifact was not created." }
+if ($setup.Length -lt 10MB) { throw "Installer artifact is unexpectedly small." }
+if ($portable.Length -lt 10MB) { throw "Portable artifact is unexpectedly small." }
+
+$setupHash = Get-FileHash $setup.FullName -Algorithm SHA256
+$portableHash = Get-FileHash $portable.FullName -Algorithm SHA256
+$hashFile = Join-Path $releaseDir "SHA256SUMS.txt"
+@(
+  ($setupHash.Hash.ToLowerInvariant() + "  " + $setup.Name),
+  ($portableHash.Hash.ToLowerInvariant() + "  " + $portable.Name)
+) | Set-Content -Path $hashFile -Encoding ascii
+
+$setupHash
+$portableHash
+
+& (Join-Path $root "scripts\smoke-windows-package.ps1")
+if ($LASTEXITCODE -ne 0) { throw "Packaged runtime smoke test failed." }
+
+Write-Host ("Installer: " + $setup.FullName)
+Write-Host ("Portable:  " + $portable.FullName)
+Write-Host ("SHA256:    " + $hashFile)
+) {
+      throw "Invalid package version: $Version"
+    }
+    npm version $Version --no-git-tag-version --allow-same-version
+    if ($LASTEXITCODE -ne 0) { throw "Failed to set Windows package version." }
+  }
+
   npm install --no-audit --no-fund --package-lock=false
   if ($LASTEXITCODE -ne 0) { throw "Electron packaging dependencies failed to install." }
 
