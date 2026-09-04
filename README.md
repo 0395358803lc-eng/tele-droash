@@ -46,6 +46,12 @@ On first packaged launch, the application stores its SQLite database under the E
 
 The CI-produced Windows executables are not Authenticode-signed unless a trusted code-signing certificate is explicitly configured for the release environment. Windows SmartScreen may therefore warn on newly downloaded builds even when their SHA-256 checksum matches the published `SHA256SUMS.txt`.
 
+### Production release policy
+
+`packaging/windows/package.json` is the release-version authority. After a version bump is reviewed and merged to `main`, the Windows Package workflow builds the installer and portable executable, records SHA-256 checksums plus `AUTHENTICODE.txt`, and creates the matching immutable Git tag/GitHub Release only when that version does not already exist. Existing release tags are never moved or overwritten.
+
+For `v1.0.0`, the current production artifacts are intentionally published as unsigned unless `AUTHENTICODE.txt` reports `Status=Valid`. A trusted Authenticode certificate can be added later without changing the build architecture; production signing should then be required before future public releases.
+
 ## Run & operate
 
 - `start.bat` - recommended normal-use launcher after setup; starts the complete local application.

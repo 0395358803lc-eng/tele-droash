@@ -87,6 +87,9 @@ $portableHash
 & (Join-Path $root "scripts\smoke-windows-package.ps1")
 if ($LASTEXITCODE -ne 0) { throw "Packaged runtime smoke test failed." }
 
+& (Join-Path $root "scripts\check-authenticode.ps1") -ReleaseDir $releaseDir
+if ($LASTEXITCODE -ne 0) { throw "Authenticode status check failed." }
+
 Write-Host ("Installer: " + $setup.FullName)
 Write-Host ("Portable:  " + $portable.FullName)
 Write-Host ("SHA256:    " + $hashFile)
