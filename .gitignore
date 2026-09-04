@@ -59,3 +59,8 @@ telegram-phone-number-checker/data/
 # Python virtual environments
 .venv/
 **/.venv/
+
+# packaged desktop build outputs
+/release/
+/.build/
+packaging/windows/package-lock.json
