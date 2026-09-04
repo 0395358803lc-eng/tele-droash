@@ -155,6 +155,77 @@ export function spawnDurableWorker(
   child.unref();
 }
 
+function waitForWorkerExit(
+  child: ReturnType<typeof spawn>,
+  timeoutMs: number,
+): Promise<boolean> {
+  if (child.exitCode !== null) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.off("exit", onExit);
+      resolve(value);
+    };
+    const onExit = () => finish(true);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    timer.unref();
+    child.once("exit", onExit);
+  });
+}
+
+export type WorkerShutdownResult = {
+  requested: string[];
+  graceful: string[];
+  forced: string[];
+};
+
+export async function suspendActiveWorkers(
+  timeoutMs = 10_000,
+): Promise<WorkerShutdownResult> {
+  const entries = [...activeWorkers.entries()].filter(
+    ([, child]) => child.exitCode === null,
+  );
+  const requested: string[] = [];
+
+  await Promise.all(
+    entries.map(async ([jobId]) => {
+      try {
+        await runDesktopControl({ command: "suspend", jobId }, 5_000);
+        requested.push(jobId);
+      } catch {
+        // A worker may have exited between the activeWorkers snapshot and the
+        // control request. The exit wait below is authoritative.
+      }
+    }),
+  );
+
+  const graceful: string[] = [];
+  const forced: string[] = [];
+  const exits = await Promise.all(
+    entries.map(async ([jobId, child]) => ({
+      jobId,
+      child,
+      exited: await waitForWorkerExit(child, timeoutMs),
+    })),
+  );
+
+  for (const { jobId, child, exited } of exits) {
+    if (exited || child.exitCode !== null) {
+      graceful.push(jobId);
+      continue;
+    }
+    forced.push(jobId);
+    child.kill("SIGKILL");
+    await waitForWorkerExit(child, 2_000);
+  }
+
+  return { requested, graceful, forced };
+}
+
 export async function recoverAndResumeStaleJobs(): Promise<string[]> {
   const recovered = await runDesktopControl({ command: "recover-all" }, 60_000);
   const jobIds = Array.isArray(recovered.jobIds)
