@@ -3,7 +3,6 @@ name: Windows Package
 on:
   push:
     branches:
-      - main
       - "feat/**"
     tags:
       - "v*"
@@ -45,19 +44,13 @@ jobs:
         run: npm install --global pnpm@10.34.5
 
       - name: Validate source runtime
-        if: github.event_name != 'push' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
         shell: cmd
         run: setup.bat --no-pause
 
       - name: Build and smoke-test Windows package
         shell: pwsh
-        run: |
-          $args = @("-SkipValidation")
-          if ($env:GITHUB_REF -like "refs/tags/v*") {
-            $version = $env:GITHUB_REF_NAME.Substring(1)
-            $args += @("-Version", $version)
-          }
-          & .\scripts\build-windows-package.ps1 @args
+        run: .\scripts\build-windows-package.ps1 -SkipValidation
 
       - name: Upload Windows executables
         uses: actions/upload-artifact@v7
@@ -74,7 +67,7 @@ jobs:
     name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: package
-    runs-on: windows-2022
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
@@ -83,16 +76,13 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: telegram-checker-windows-${{ github.sha }}
-          path: release/windows
+          path: release
 
       - name: Publish tagged GitHub release
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${env:GITHUB_REF_NAME}" `
-            .\release\windows\Telegram-Checker-Setup-*.exe `
-            .\release\windows\Telegram-Checker-Portable-*.exe `
-            .\release\windows\SHA256SUMS.txt `
-            --title "Telegram Checker ${env:GITHUB_REF_NAME}" `
+          gh release create "${GITHUB_REF_NAME}" release/* \
+            --title "Telegram Checker ${GITHUB_REF_NAME}" \
             --generate-notes
