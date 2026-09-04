@@ -320,7 +320,7 @@ async function startDesktop(): Promise<void> {
 
   const [{ default: api }, dbModule, engineModule] = await Promise.all([
     import("../../../artifacts/api-server/src/app"),
-    import("@workspace/db"),
+    import("../../../lib/db/src/index"),
     import("../../../artifacts/api-server/src/lib/desktop-engine"),
   ]);
 
