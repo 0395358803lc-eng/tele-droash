@@ -62,11 +62,20 @@ if (-not $portable) { throw "Portable executable artifact was not created." }
 if ($setup.Length -lt 10MB) { throw "Installer artifact is unexpectedly small." }
 if ($portable.Length -lt 10MB) { throw "Portable artifact is unexpectedly small." }
 
-Get-FileHash $setup.FullName -Algorithm SHA256
-Get-FileHash $portable.FullName -Algorithm SHA256
+$setupHash = Get-FileHash $setup.FullName -Algorithm SHA256
+$portableHash = Get-FileHash $portable.FullName -Algorithm SHA256
+$hashFile = Join-Path $releaseDir "SHA256SUMS.txt"
+@(
+  ($setupHash.Hash.ToLowerInvariant() + "  " + $setup.Name),
+  ($portableHash.Hash.ToLowerInvariant() + "  " + $portable.Name)
+) | Set-Content -Path $hashFile -Encoding ascii
+
+$setupHash
+$portableHash
 
 & (Join-Path $root "scripts\smoke-windows-package.ps1")
 if ($LASTEXITCODE -ne 0) { throw "Packaged runtime smoke test failed." }
 
 Write-Host ("Installer: " + $setup.FullName)
 Write-Host ("Portable:  " + $portable.FullName)
+Write-Host ("SHA256:    " + $hashFile)
