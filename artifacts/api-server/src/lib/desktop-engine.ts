@@ -10,6 +10,7 @@ import {
   getDurableJobSettings,
 } from "@workspace/db";
 import { revealSecret } from "./telegram-crypto";
+import { logger } from "./logger";
 
 const pythonRoot = path.resolve(
   import.meta.dirname,
@@ -138,6 +139,16 @@ export function spawnDurableWorker(
   fs.closeSync(logFd);
   activeWorkers.set(jobId, child);
   child.once("exit", () => activeWorkers.delete(jobId));
+  child.once("error", (error) => {
+    activeWorkers.delete(jobId);
+    logger.error({ err: error, jobId }, "Durable worker process failed to start");
+  });
+  child.stdin?.on("error", (error) => {
+    // EPIPE can happen when Python exits before consuming the startup payload.
+    // The child error/exit path is authoritative; never let the pipe itself
+    // become an uncaught EventEmitter error in the API process.
+    logger.warn({ err: error, jobId }, "Durable worker input pipe closed");
+  });
   const workerPayload = JSON.stringify({
     command: "run",
     jobId,
