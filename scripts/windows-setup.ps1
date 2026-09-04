@@ -12,6 +12,11 @@ foreach ($tool in @('node','pnpm','python')) {
   }
 }
 
+python -c "import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 1)"
+if ($LASTEXITCODE -ne 0) {
+  throw 'Python 3.11 or newer is required. Run setup.bat to install the supported version.'
+}
+
 $pythonProject = Join-Path $root 'telegram-phone-number-checker'
 $venvPython = Join-Path $pythonProject '.venv\Scripts\python.exe'
 if (-not (Test-Path $venvPython)) {
