@@ -2,6 +2,11 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+$nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
+if ($LASTEXITCODE -ne 0 -or $nodeMajor -lt 22) {
+  throw 'Node.js 22 or newer is required. Run setup.bat to install the supported version.'
+}
+
 Write-Host '== Telegram Checker Desktop validation =='
 
 foreach ($tool in @('node','pnpm')) {
