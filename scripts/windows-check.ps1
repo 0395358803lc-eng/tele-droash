@@ -64,6 +64,9 @@ if ($LASTEXITCODE -ne 0) { throw 'TypeScript typecheck failed.' }
 pnpm --filter @workspace/api-server run build
 if ($LASTEXITCODE -ne 0) { throw 'API build failed.' }
 
+pnpm --filter @workspace/api-server run test:integration
+if ($LASTEXITCODE -ne 0) { throw 'API integration tests failed.' }
+
 pnpm --filter @workspace/telegram-checker run build
 if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
 
