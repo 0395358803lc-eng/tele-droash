@@ -35,6 +35,9 @@ Write-Host ("Python: " + (& $venvPython --version))
 Write-Host ("Python executable: " + $venvPython)
 Write-Host ("SQLite: " + $env:DATABASE_PATH)
 
+pnpm --filter @workspace/api-server exec node -e "const Database=require('better-sqlite3'); const db=new Database(':memory:'); db.prepare('select 1').get(); db.close(); console.log('better-sqlite3 native binding: ok')"
+if ($LASTEXITCODE -ne 0) { throw 'better-sqlite3 native binding check failed.' }
+
 $pythonProject = Join-Path $root 'telegram-phone-number-checker'
 Push-Location $pythonProject
 try {
