@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,10 @@ from .repositories.result_repository import ResultRepository
 
 
 def _payload() -> dict[str, Any]:
-    raw = sys.stdin.read()
+    # Control commands still work with EOF-terminated JSON. Durable "run"
+    # workers receive one newline-terminated payload while stdin intentionally
+    # remains open so it can act as a parent-process liveness pipe.
+    raw = sys.stdin.readline()
     return json.loads(raw or "{}")
 
 
@@ -189,6 +193,55 @@ def _status_with_db(db: Database, job_id: str) -> dict[str, Any]:
     return info
 
 
+async def _run_manager_with_parent_watch(
+    manager: JobManager,
+    db: Database,
+    job_id: str,
+    auto_resume: bool,
+    enabled: bool,
+) -> JobStatus:
+    if not enabled:
+        return await manager.run(job_id, auto_resume=auto_resume)
+
+    loop = asyncio.get_running_loop()
+    parent_closed = asyncio.Event()
+
+    def watch_parent_pipe() -> None:
+        try:
+            # The Node parent keeps stdin open for the lifetime of this worker.
+            # EOF therefore means the parent disappeared or deliberately closed
+            # the worker pipe. The thread is daemonized so normal worker exit is
+            # never delayed while waiting for the parent.
+            sys.stdin.read()
+        except Exception:
+            pass
+        try:
+            loop.call_soon_threadsafe(parent_closed.set)
+        except RuntimeError:
+            # Event loop already closed because the worker finished normally.
+            pass
+
+    threading.Thread(
+        target=watch_parent_pipe,
+        name=f"parent-pipe-{job_id}",
+        daemon=True,
+    ).start()
+
+    manager_task = asyncio.create_task(manager.run(job_id, auto_resume=auto_resume))
+    parent_task = asyncio.create_task(parent_closed.wait())
+    try:
+        done, _ = await asyncio.wait(
+            {manager_task, parent_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if parent_task in done and not manager_task.done():
+            JobController(db).suspend(job_id)
+        return await manager_task
+    finally:
+        parent_task.cancel()
+        await asyncio.gather(parent_task, return_exceptions=True)
+
+
 async def _run_async(payload: dict[str, Any]) -> dict[str, Any]:
     db = _db(payload)
     try:
@@ -217,7 +270,13 @@ async def _run_async(payload: dict[str, Any]) -> dict[str, Any]:
             auto_resume = payload.get("autoResume")
             if auto_resume is None:
                 auto_resume = cfg.auto_resume
-            status = await manager.run(job_id, auto_resume=bool(auto_resume))
+            status = await _run_manager_with_parent_watch(
+                manager,
+                db,
+                job_id,
+                auto_resume=bool(auto_resume),
+                enabled=bool(payload.get("parentWatch")),
+            )
         except (AccountBusyError, JobBusyError) as exc:
             JobRepository(db).update_status(job_id, JobStatus.PAUSED)
             JobRepository(db).record_job_error(job_id, type(exc).__name__, str(exc))
