@@ -406,3 +406,54 @@ def test_shutdown_suspend_before_claim_survives_mark_started(tmp_path: Path):
 
     worker.release()
     db.close()
+
+
+def test_preclaim_shutdown_suspend_never_connects_telegram(tmp_path: Path):
+    db_path = tmp_path / "checker.db"
+    db = Database(db_path)
+    jobs = JobRepository(db)
+    results = ResultRepository(db)
+    job_id = "job-preclaim-manager-suspend"
+
+    jobs.create(job_id, "preclaim manager suspend", 1)
+    results.insert(job_id, "+84933333333", "+84933333333", 3)
+
+    cfg = Config(
+        api_id="1",
+        api_hash="hash",
+        api_phone_number="+84900000012",
+        database_path=db_path,
+        auto_resume=True,
+        min_request_interval_seconds=0.1,
+    )
+    manager = JobManager(cfg, db)
+    controller = JobController(db)
+    telegram = NeverConnectTelegram()
+
+    controller.suspend(job_id)
+    assert jobs.get_requested_command(job_id) == "SUSPEND"
+
+    async def run_case():
+        status = await manager.run(
+            job_id,
+            auto_resume=True,
+            telegram_factory=lambda: telegram,
+        )
+        assert status == JobStatus.RUNNING
+
+    asyncio.run(run_case())
+
+    suspended = jobs.get(job_id)
+    assert suspended is not None
+    assert suspended.status == JobStatus.RUNNING
+    assert suspended.worker_id is None
+    assert suspended.worker_lease_until is None
+    assert suspended.requested_command == "NONE"
+    assert telegram.connected is False
+
+    asyncio.run(manager.recover(job_id))
+    recovered = jobs.get(job_id)
+    assert recovered is not None
+    assert recovered.status == JobStatus.PAUSED
+    assert telegram.connected is False
+    db.close()
