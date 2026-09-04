@@ -138,20 +138,27 @@ export function spawnDurableWorker(
   fs.closeSync(logFd);
   activeWorkers.set(jobId, child);
   child.once("exit", () => activeWorkers.delete(jobId));
-  child.stdin?.end(
-    JSON.stringify({
-      command: "run",
-      jobId,
-      databasePath,
-      apiId: credentials.apiId,
-      apiHash: credentials.apiHash,
-      phoneNumber: credentials.phoneNumber,
-      sessionString: credentials.sessionString,
-      maxAttempts: options.maxAttempts,
-      minRequestInterval: options.minRequestInterval,
-      autoResume: options.autoResume,
-    }),
-  );
+  const workerPayload = JSON.stringify({
+    command: "run",
+    jobId,
+    databasePath,
+    apiId: credentials.apiId,
+    apiHash: credentials.apiHash,
+    phoneNumber: credentials.phoneNumber,
+    sessionString: credentials.sessionString,
+    maxAttempts: options.maxAttempts,
+    minRequestInterval: options.minRequestInterval,
+    autoResume: options.autoResume,
+    parentWatch: true,
+  });
+  child.stdin?.write(`${workerPayload}\n`);
+  // Keep stdin OPEN as a liveness pipe: if the API process disappears, the OS
+  // closes this pipe and the Python worker self-suspends. Unref the pipe handle
+  // so it does not prevent a normal Node process exit.
+  const workerStdin = child.stdin as
+    | (typeof child.stdin & { unref?: () => void })
+    | null;
+  workerStdin?.unref?.();
   child.unref();
 }
 
