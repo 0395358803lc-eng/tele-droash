@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { sqlite } from "./sqlite-handle";
 
 export type DurableJobRow = {
@@ -40,6 +41,88 @@ export type DurableJobSettings = {
   phoneRegion: string;
   autoResume: boolean;
 };
+
+export type LiveAccountWorker = {
+  jobId: string | null;
+  leaseUntil: string;
+};
+
+export type TelegramJobMetadataInput = {
+  id: string;
+  accountId: string;
+  name: string;
+  total: number;
+  maxAttempts: number;
+  minRequestInterval: number;
+  phoneRegion: string;
+  autoResume: boolean;
+};
+
+function accountKeyFromPhone(phoneNumber: string): string {
+  return createHash("sha256").update(phoneNumber, "utf8").digest("hex").slice(0, 16);
+}
+
+export function getLiveAccountWorker(
+  phoneNumber: string,
+): LiveAccountWorker | undefined {
+  const row = sqlite
+    .prepare(
+      `SELECT job_id, worker_lease_until
+       FROM account_worker_state
+       WHERE account_key = ?`,
+    )
+    .get(accountKeyFromPhone(phoneNumber)) as
+    | { job_id: string | null; worker_lease_until: string | null }
+    | undefined;
+
+  if (!row?.worker_lease_until) return undefined;
+  const leaseUntilMs = Date.parse(row.worker_lease_until);
+  if (!Number.isFinite(leaseUntilMs) || leaseUntilMs <= Date.now()) {
+    return undefined;
+  }
+  return { jobId: row.job_id, leaseUntil: row.worker_lease_until };
+}
+
+export function createTelegramJobMetadataAndSettings(
+  input: TelegramJobMetadataInput,
+): void {
+  const now = Date.now();
+  const write = sqlite.transaction(() => {
+    sqlite
+      .prepare(
+        `INSERT INTO telegram_jobs (
+          id, account_id, name, status, total, processed, found,
+          not_discoverable, errors, max_attempts, min_request_interval,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, 'queued', ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.accountId,
+        input.name,
+        input.total,
+        input.maxAttempts,
+        input.minRequestInterval,
+        now,
+        now,
+      );
+
+    sqlite
+      .prepare(
+        `INSERT INTO desktop_job_settings (
+          job_id, max_attempts, min_request_interval, phone_region, auto_resume
+        ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.maxAttempts,
+        input.minRequestInterval,
+        input.phoneRegion,
+        input.autoResume ? 1 : 0,
+      );
+  });
+  write();
+}
 
 export function getDurableJob(jobId: string): DurableJobRow | undefined {
   return sqlite.prepare("SELECT * FROM jobs WHERE id = ?").get(jobId) as
