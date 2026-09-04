@@ -48,6 +48,28 @@ jobs:
         shell: cmd
         run: setup.bat --no-pause
 
+      - name: Validate packaging PowerShell syntax
+        shell: pwsh
+        run: |
+          $files = @(
+            ".\scripts\build-python-engine.ps1",
+            ".\scripts\build-windows-package.ps1",
+            ".\scripts\smoke-windows-package.ps1"
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell syntax validation failed: $file"
+            }
+          }
+
       - name: Build and smoke-test Windows package
         shell: pwsh
         run: .\scripts\build-windows-package.ps1 -SkipValidation
