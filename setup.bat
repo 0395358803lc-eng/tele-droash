@@ -210,6 +210,16 @@ call pnpm install --frozen-lockfile
 
 if errorlevel 1 goto :failed
 
+echo [SETUP] Rebuilding native SQLite binding for the active Node.js runtime...
+call pnpm rebuild better-sqlite3
+if errorlevel 1 goto :failed
+
+call pnpm --filter @workspace/api-server exec node -e "const Database=require('better-sqlite3'); const db=new Database(':memory:'); db.prepare('select 1').get(); db.close(); console.log('better-sqlite3 native binding: ok');"
+if errorlevel 1 (
+    echo [ERROR] better-sqlite3 native binding is unavailable for the active Node.js runtime.
+    goto :failed
+)
+
 rem ------------------------------------------------------------
 
 rem Python/runtime environment setup
