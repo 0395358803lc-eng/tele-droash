@@ -1,8 +1,6 @@
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
-import path from "node:path";
 import {
   db,
   createTelegramJobMetadataAndSettings,
@@ -16,6 +14,7 @@ import {
 import { CheckTelegramAccountPhonesBody } from "@workspace/api-zod";
 import { runDesktopControl, spawnDurableWorker } from "../lib/desktop-engine";
 import { protectSecret, revealSecret } from "../lib/telegram-crypto";
+import { spawnTelegramPython } from "../lib/python-runtime";
 
 const router = Router();
 const accountJobStarts = new Set<string>();
@@ -40,11 +39,6 @@ async function waitForAccountWorkerClaim(
   }
   return "timeout";
 }
-
-const bridgePath = path.resolve(
-  import.meta.dirname,
-  "../../../telegram-phone-number-checker/telegram_phone_number_checker/api_bridge.py",
-);
 
 type BridgeResult = {
   state:
@@ -97,7 +91,7 @@ function publicAccount(account: TelegramAccount) {
 
 function runBridge(payload: Record<string, unknown>): Promise<BridgeResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.env.PYTHON_BIN || "python", [bridgePath], {
+    const child = spawnTelegramPython("api-bridge", {
       stdio: ["pipe", "pipe", "ignore"],
       env: { ...process.env, PYTHONUNBUFFERED: "1" },
     });
