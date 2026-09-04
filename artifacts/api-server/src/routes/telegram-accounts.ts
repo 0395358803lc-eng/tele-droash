@@ -5,8 +5,10 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import {
   db,
+  createTelegramJobMetadataAndSettings,
   getDurableJob,
-  saveDurableJobSettings,
+  getLiveAccountWorker,
+  deleteDurableJobSettings,
   telegramAccounts,
   telegramJobs,
   type TelegramAccount,
@@ -16,6 +18,29 @@ import { runDesktopControl, spawnDurableWorker } from "../lib/desktop-engine";
 import { protectSecret, revealSecret } from "../lib/telegram-crypto";
 
 const router = Router();
+const accountJobStarts = new Set<string>();
+
+class AccountStartConflictError extends Error {}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForAccountWorkerClaim(
+  phoneNumber: string,
+  jobId: string,
+  timeoutMs = 2_000,
+): Promise<"claimed" | "busy" | "timeout"> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const worker = getLiveAccountWorker(phoneNumber);
+    if (worker?.jobId === jobId) return "claimed";
+    if (worker && worker.jobId !== jobId) return "busy";
+    await delay(50);
+  }
+  return "timeout";
+}
+
 const bridgePath = path.resolve(
   import.meta.dirname,
   "../../../telegram-phone-number-checker/telegram_phone_number_checker/api_bridge.py",
@@ -329,12 +354,27 @@ router.post("/telegram-accounts/:accountId/check", async (req, res) => {
       .json({ message: "Mỗi tác vụ tối đa 1.000 số điện thoại." });
   }
 
+  if (accountJobStarts.has(accountId)) {
+    return res.status(409).json({
+      message: "Telegram account đang khởi tạo một tác vụ khác. Hãy thử lại sau.",
+    });
+  }
+  const currentWorker = getLiveAccountWorker(account.phoneNumber);
+  if (currentWorker) {
+    return res.status(409).json({
+      message: "Telegram account đang được một durable worker khác sử dụng.",
+      activeJobId: currentWorker.jobId,
+    });
+  }
+
+  accountJobStarts.add(accountId);
   const jobId = randomUUID();
   const jobName = String(
     req.body?.jobName || `Telegram check ${new Date().toLocaleString("vi-VN")}`,
   )
     .trim()
     .slice(0, 120);
+  let durableCreated = false;
 
   try {
     const created = await runDesktopControl({
@@ -345,29 +385,31 @@ router.post("/telegram-accounts/:accountId/check", async (req, res) => {
       maxAttempts: parsed.data.maxAttempts,
       defaultRegion: parsed.data.phoneRegion ?? "VN",
     });
+    durableCreated = true;
 
-    await db.insert(telegramJobs).values({
+    const maxAttempts = parsed.data.maxAttempts ?? 3;
+    const minRequestInterval = parsed.data.minRequestInterval ?? 1.2;
+    const phoneRegion = parsed.data.phoneRegion ?? "VN";
+    const autoResume = parsed.data.autoResume ?? true;
+    const total = Number(created.total ?? parsed.data.phones.length);
+
+    createTelegramJobMetadataAndSettings({
       id: jobId,
       accountId,
       name: jobName,
-      status: "queued",
-      total: Number(created.total ?? parsed.data.phones.length),
-      processed: 0,
-      found: 0,
-      notDiscoverable: 0,
-      errors: 0,
-      maxAttempts: parsed.data.maxAttempts ?? 3,
-      minRequestInterval: parsed.data.minRequestInterval ?? 1.2,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      total,
+      maxAttempts,
+      minRequestInterval,
+      phoneRegion,
+      autoResume,
     });
 
-    saveDurableJobSettings(jobId, {
-      maxAttempts: parsed.data.maxAttempts ?? 3,
-      minRequestInterval: parsed.data.minRequestInterval ?? 1.2,
-      phoneRegion: parsed.data.phoneRegion ?? "VN",
-      autoResume: parsed.data.autoResume ?? true,
-    });
+    const workerBeforeSpawn = getLiveAccountWorker(account.phoneNumber);
+    if (workerBeforeSpawn) {
+      throw new AccountStartConflictError(
+        "Telegram account became busy while this job was being created.",
+      );
+    }
 
     spawnDurableWorker(
       jobId,
@@ -378,29 +420,70 @@ router.post("/telegram-accounts/:accountId/check", async (req, res) => {
         sessionString: revealSecret(account.sessionEncrypted),
       },
       {
-        maxAttempts: parsed.data.maxAttempts,
-        minRequestInterval: parsed.data.minRequestInterval,
-        autoResume: parsed.data.autoResume ?? true,
+        maxAttempts,
+        minRequestInterval,
+        autoResume,
       },
     );
 
-    await db
-      .update(telegramAccounts)
-      .set({
-        lastCheckedAt: new Date(),
-        lastError: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(telegramAccounts.id, accountId));
+    const claimState = await waitForAccountWorkerClaim(account.phoneNumber, jobId);
+    if (claimState === "busy") {
+      throw new AccountStartConflictError(
+        "Another durable worker claimed this Telegram account first.",
+      );
+    }
+
+    try {
+      await db
+        .update(telegramAccounts)
+        .set({
+          lastCheckedAt: new Date(),
+          lastError: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(telegramAccounts.id, accountId));
+    } catch (error) {
+      req.log?.warn(
+        { err: error, accountId, jobId },
+        "Failed to update Telegram account activity metadata",
+      );
+    }
 
     return res.status(202).json({ accountId, jobId, status: "queued" });
   } catch (error) {
+    if (durableCreated) {
+      try {
+        await runDesktopControl({ command: "delete", jobId });
+      } catch (cleanupError) {
+        req.log?.error(
+          { err: cleanupError, jobId },
+          "Failed to compensate durable job creation",
+        );
+      }
+      try {
+        deleteDurableJobSettings(jobId);
+        await db.delete(telegramJobs).where(eq(telegramJobs.id, jobId));
+      } catch (cleanupError) {
+        req.log?.error(
+          { err: cleanupError, jobId },
+          "Failed to compensate Telegram job metadata creation",
+        );
+      }
+    }
+
+    if (error instanceof AccountStartConflictError) {
+      return res.status(409).json({
+        message: "Telegram account đang được một durable worker khác sử dụng.",
+      });
+    }
     return res.status(400).json({
       message:
         error instanceof Error
           ? error.message
           : "Không thể tạo tác vụ kiểm tra.",
     });
+  } finally {
+    accountJobStarts.delete(accountId);
   }
 });
 

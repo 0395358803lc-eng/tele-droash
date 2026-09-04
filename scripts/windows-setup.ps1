@@ -12,6 +12,11 @@ foreach ($tool in @('node','pnpm','python')) {
   }
 }
 
+python -c "import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 1)"
+if ($LASTEXITCODE -ne 0) {
+  throw 'Python 3.11 or newer is required. Run setup.bat to install the supported version.'
+}
+
 $pythonProject = Join-Path $root 'telegram-phone-number-checker'
 $venvPython = Join-Path $pythonProject '.venv\Scripts\python.exe'
 if (-not (Test-Path $venvPython)) {
@@ -20,13 +25,17 @@ if (-not (Test-Path $venvPython)) {
   if ($LASTEXITCODE -ne 0) { throw 'Failed to create Python virtual environment.' }
 }
 
-Write-Host 'Installing Python runtime/test/audit dependencies...'
+Write-Host 'Installing locked Python runtime/test dependencies...'
 & $venvPython -m pip install --upgrade pip
 if ($LASTEXITCODE -ne 0) { throw 'Failed to upgrade pip in the project virtual environment.' }
 Push-Location $pythonProject
 try {
-  & $venvPython -m pip install -e . pytest pytest-asyncio pip-audit
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to install Python project dependencies.' }
+  & $venvPython -m pip install --require-hashes -r .\requirements-dev.txt
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to install locked Python dependencies.' }
+
+  & $venvPython -m pip install --no-deps -e .
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to install the local Python project.' }
+
   & $venvPython -m pip check
   if ($LASTEXITCODE -ne 0) { throw 'Python dependency consistency check failed.' }
 } finally {
