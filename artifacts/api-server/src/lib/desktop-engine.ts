@@ -46,7 +46,7 @@ export function runDesktopControl(
       fail(new Error("Durable engine control command timed out."));
     }, timeoutMs);
 
-    child.stdout.on("data", (chunk) => {
+    child.stdout?.on("data", (chunk) => {
       stdout += chunk.toString();
       if (Buffer.byteLength(stdout, "utf8") > 2 * 1024 * 1024) {
         child.kill("SIGKILL");
@@ -54,7 +54,7 @@ export function runDesktopControl(
         fail(new Error("Durable engine control output exceeded 2 MB."));
       }
     });
-    child.stderr.on("data", (chunk) => {
+    child.stderr?.on("data", (chunk) => {
       stderr += chunk.toString();
       if (stderr.length > 4096) stderr = stderr.slice(-4096);
     });
