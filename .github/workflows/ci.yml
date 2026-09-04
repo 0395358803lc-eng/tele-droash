@@ -34,7 +34,7 @@ jobs:
 
       - name: Install project pnpm
         shell: pwsh
-        run: npm install --global pnpm@10.4.1
+        run: npm install --global pnpm@10.34.5
 
       - name: Run one-click setup and validation
         shell: cmd
