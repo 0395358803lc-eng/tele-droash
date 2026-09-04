@@ -169,6 +169,23 @@ class JobManager:
                 log_event(logger, "JOB_COMPLETED_WITHOUT_WORKER", job_id=job_id)
                 return JobStatus.COMPLETED
 
+        # A desktop shutdown can race with worker process startup before
+        # claim_worker()/claim_account() has acquired either lease. SUSPEND is
+        # persisted specifically to close that window. If it is already present
+        # here and nobody owns the job/account yet, do not connect Telegram at
+        # all. Leave the job as an active-but-unowned RUNNING job so the next
+        # application startup recovers it to PAUSED and applies autoResume.
+        if (
+            self._job_repo.get_requested_command(job_id) == "SUSPEND"
+            and not self._job_repo.has_live_worker_lease(job_id)
+            and not self._job_repo.has_live_account_lease_for_job(job_id)
+        ):
+            self._job_repo.update_status(job_id, JobStatus.RUNNING)
+            self._job_repo.clear_requested_command(job_id)
+            self._job_repo.clear_worker_ownership(job_id)
+            log_event(logger, "JOB_SUSPENDED_BEFORE_CLAIM", job_id=job_id)
+            return JobStatus.RUNNING
+
         telegram = (
             telegram_factory()
             if telegram_factory is not None
