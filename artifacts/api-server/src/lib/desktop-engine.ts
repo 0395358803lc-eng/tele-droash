@@ -10,6 +10,7 @@ import {
   getDurableJobSettings,
 } from "@workspace/db";
 import { revealSecret } from "./telegram-crypto";
+import { logger } from "./logger";
 
 const pythonRoot = path.resolve(
   import.meta.dirname,
@@ -138,21 +139,111 @@ export function spawnDurableWorker(
   fs.closeSync(logFd);
   activeWorkers.set(jobId, child);
   child.once("exit", () => activeWorkers.delete(jobId));
-  child.stdin?.end(
-    JSON.stringify({
-      command: "run",
-      jobId,
-      databasePath,
-      apiId: credentials.apiId,
-      apiHash: credentials.apiHash,
-      phoneNumber: credentials.phoneNumber,
-      sessionString: credentials.sessionString,
-      maxAttempts: options.maxAttempts,
-      minRequestInterval: options.minRequestInterval,
-      autoResume: options.autoResume,
+  child.once("error", (error) => {
+    activeWorkers.delete(jobId);
+    logger.error({ err: error, jobId }, "Durable worker process failed to start");
+  });
+  child.stdin?.on("error", (error) => {
+    // EPIPE can happen when Python exits before consuming the startup payload.
+    // The child error/exit path is authoritative; never let the pipe itself
+    // become an uncaught EventEmitter error in the API process.
+    logger.warn({ err: error, jobId }, "Durable worker input pipe closed");
+  });
+  const workerPayload = JSON.stringify({
+    command: "run",
+    jobId,
+    databasePath,
+    apiId: credentials.apiId,
+    apiHash: credentials.apiHash,
+    phoneNumber: credentials.phoneNumber,
+    sessionString: credentials.sessionString,
+    maxAttempts: options.maxAttempts,
+    minRequestInterval: options.minRequestInterval,
+    autoResume: options.autoResume,
+    parentWatch: true,
+  });
+  child.stdin?.write(`${workerPayload}\n`);
+  // Keep stdin OPEN as a liveness pipe: if the API process disappears, the OS
+  // closes this pipe and the Python worker self-suspends. Unref the pipe handle
+  // so it does not prevent a normal Node process exit.
+  const workerStdin = child.stdin as
+    | (typeof child.stdin & { unref?: () => void })
+    | null;
+  workerStdin?.unref?.();
+  child.unref();
+}
+
+function waitForWorkerExit(
+  child: ReturnType<typeof spawn>,
+  timeoutMs: number,
+): Promise<boolean> {
+  if (child.exitCode !== null) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.off("exit", onExit);
+      resolve(value);
+    };
+    const onExit = () => finish(true);
+    // Keep this timer referenced: during application shutdown the worker is
+    // detached/unref'ed, so this wait is what keeps Node alive long enough to
+    // observe a graceful worker exit before falling back to force termination.
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    child.once("exit", onExit);
+  });
+}
+
+export type WorkerShutdownResult = {
+  requested: string[];
+  graceful: string[];
+  forced: string[];
+};
+
+export async function suspendActiveWorkers(
+  timeoutMs = 10_000,
+): Promise<WorkerShutdownResult> {
+  const entries = [...activeWorkers.entries()].filter(
+    ([, child]) => child.exitCode === null,
+  );
+  const requested: string[] = [];
+
+  await Promise.all(
+    entries.map(async ([jobId]) => {
+      try {
+        await runDesktopControl({ command: "suspend", jobId }, 5_000);
+        requested.push(jobId);
+      } catch {
+        // A worker may have exited between the activeWorkers snapshot and the
+        // control request. The exit wait below is authoritative.
+      }
     }),
   );
-  child.unref();
+
+  const graceful: string[] = [];
+  const forced: string[] = [];
+  const exits = await Promise.all(
+    entries.map(async ([jobId, child]) => ({
+      jobId,
+      child,
+      exited: await waitForWorkerExit(child, timeoutMs),
+    })),
+  );
+
+  for (const { jobId, child, exited } of exits) {
+    if (exited || child.exitCode !== null) {
+      graceful.push(jobId);
+      continue;
+    }
+    forced.push(jobId);
+    child.kill("SIGKILL");
+    await waitForWorkerExit(child, 2_000);
+  }
+
+  return { requested, graceful, forced };
 }
 
 export async function recoverAndResumeStaleJobs(): Promise<string[]> {

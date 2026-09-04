@@ -12,6 +12,20 @@ foreach ($tool in @('node','pnpm','python')) {
   }
 }
 
+$nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
+if ($LASTEXITCODE -ne 0 -or $nodeMajor -lt 22) {
+  throw 'Node.js 22 or newer is required. Run setup.bat to install the supported version.'
+}
+
+$workspacePackage = Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json
+$expectedPnpm = [string]$workspacePackage.packageManager
+$expectedPnpm = $expectedPnpm -replace '^pnpm@', ''
+$actualPnpm = [string](pnpm --version)
+$actualPnpm = $actualPnpm.Trim()
+if ($LASTEXITCODE -ne 0 -or $actualPnpm -ne $expectedPnpm) {
+  throw "pnpm $expectedPnpm is required, found '$actualPnpm'. Run setup.bat."
+}
+
 python -c "import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 1)"
 if ($LASTEXITCODE -ne 0) {
   throw 'Python 3.11 or newer is required. Run setup.bat to install the supported version.'

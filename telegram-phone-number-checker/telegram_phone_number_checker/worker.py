@@ -88,6 +88,7 @@ class Worker:
         self._claimed_account = False
         self._paused_requested = False
         self._cancel_requested_by_command = False
+        self._suspend_requested_by_shutdown = False
         self._renew_failure_limit = renew_failure_limit
         self._takeover_grace_seconds = takeover_grace_seconds
         self._in_flight_recovery_grace_seconds = in_flight_recovery_grace_seconds
@@ -106,6 +107,10 @@ class Worker:
     @property
     def cancel_requested_by_command(self) -> bool:
         return self._cancel_requested_by_command
+
+    @property
+    def suspend_requested_by_shutdown(self) -> bool:
+        return self._suspend_requested_by_shutdown
 
     # ---- Claim (must happen BEFORE any Telegram connection) --------------
 
@@ -237,6 +242,16 @@ class Worker:
             while not self._cancel.is_set():
                 self._poll_persisted_command(job_id)
 
+                if self._command == JobCommand.SUSPEND:
+                    self._command = JobCommand.NONE
+                    self._suspend_requested_by_shutdown = True
+                    log_event(
+                        logger,
+                        "WORKER_SUSPENDED_FOR_SHUTDOWN",
+                        job_id=job_id,
+                        worker_id=self.worker_id,
+                    )
+                    break
                 if self._command == JobCommand.CANCEL:
                     self._command = JobCommand.NONE
                     self._cancel_requested_by_command = True

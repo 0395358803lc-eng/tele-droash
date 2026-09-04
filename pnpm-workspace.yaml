@@ -58,12 +58,16 @@ catalog:
 
 autoInstallPeers: false
 
-onlyBuiltDependencies:
-  - "@swc/core"
-  - better-sqlite3
-  - esbuild
-  - msw
-  - unrs-resolver
+# Fail installation when a dependency requests a build script without
+# explicit approval. Native/runtime-critical packages are allowlisted below.
+strictDepBuilds: true
+
+allowBuilds:
+  "@swc/core": true
+  better-sqlite3: true
+  esbuild: true
+  msw: true
+  unrs-resolver: true
 
 overrides:
 

@@ -84,6 +84,11 @@ class JobManager:
                 )
             self._job_repo.clear_worker_ownership(job_id)
             self._job_repo.update_status(job_id, JobStatus.PAUSED)
+            # SUSPEND is a process-lifecycle signal, not a durable user intent.
+            # Once startup recovery has converted the stale active job to PAUSED,
+            # clear the old command so autoResume can start a fresh worker.
+            if self._job_repo.get_requested_command(job_id) == "SUSPEND":
+                self._job_repo.clear_requested_command(job_id)
             log_event(logger, "JOB_RECOVERED_TO_PAUSED", job_id=job_id)
 
         # Safe: no live worker holds a lease -> reset leftover PROCESSING items.
@@ -163,6 +168,23 @@ class JobManager:
                 self._job_repo.clear_worker_ownership(job_id)
                 log_event(logger, "JOB_COMPLETED_WITHOUT_WORKER", job_id=job_id)
                 return JobStatus.COMPLETED
+
+        # A desktop shutdown can race with worker process startup before
+        # claim_worker()/claim_account() has acquired either lease. SUSPEND is
+        # persisted specifically to close that window. If it is already present
+        # here and nobody owns the job/account yet, do not connect Telegram at
+        # all. Leave the job as an active-but-unowned RUNNING job so the next
+        # application startup recovers it to PAUSED and applies autoResume.
+        if (
+            self._job_repo.get_requested_command(job_id) == "SUSPEND"
+            and not self._job_repo.has_live_worker_lease(job_id)
+            and not self._job_repo.has_live_account_lease_for_job(job_id)
+        ):
+            self._job_repo.update_status(job_id, JobStatus.RUNNING)
+            self._job_repo.clear_requested_command(job_id)
+            self._job_repo.clear_worker_ownership(job_id)
+            log_event(logger, "JOB_SUSPENDED_BEFORE_CLAIM", job_id=job_id)
+            return JobStatus.RUNNING
 
         telegram = (
             telegram_factory()
@@ -264,9 +286,9 @@ class JobManager:
                     self._worker_task.cancel()
                     await asyncio.gather(self._worker_task, return_exceptions=True)
                 self._job_repo.update_status_if_owned(
-                    job_id, worker.worker_id, JobStatus.PAUSED
+                    job_id, worker.worker_id, JobStatus.RUNNING
                 )
-                log_event(logger, "JOB_PAUSED_ON_SHUTDOWN", job_id=job_id)
+                log_event(logger, "JOB_SUSPENDED_ON_PROCESS_SHUTDOWN", job_id=job_id)
                 raise
             except LostOwnershipError:
                 # The worker lost its lease mid-run (takeover/expiry). This is not
@@ -308,12 +330,23 @@ class JobManager:
                 )
                 raise
             else:
-                # Worker ended normally. Finalize: only COMPLETED if every item is
-                # terminal; otherwise the job must remain recoverable (PAUSED).
+                # Worker ended normally. A desktop SUSPEND deliberately keeps
+                # the job RUNNING while leases are released in finally; startup
+                # recovery then converts it to PAUSED and honors autoResume.
+                # Other normal exits only become COMPLETED when every item is
+                # terminal; unfinished jobs remain recoverable.
                 self._job_repo.reconcile_stats(job_id)
                 job = self._job_repo.get(job_id)
 
-                if worker.cancel_requested_by_command:
+                if worker.suspend_requested_by_shutdown:
+                    if not self._job_repo.update_status_if_owned(
+                        job_id, worker.worker_id, JobStatus.RUNNING
+                    ):
+                        raise LostOwnershipError(
+                            f"Worker {worker.worker_id} cannot suspend job {job_id}"
+                        )
+                    final_status = JobStatus.RUNNING
+                elif worker.cancel_requested_by_command:
                     if not self._job_repo.update_status_if_owned(
                         job_id, worker.worker_id, JobStatus.CANCELLED
                     ):
@@ -470,6 +503,24 @@ class JobController:
             # Not currently running: nothing to signal; mark paused directly.
             self._job_repo.update_status(job_id, JobStatus.PAUSED)
             self._job_repo.clear_pause_state(job_id)
+
+    def suspend(self, job_id: str) -> None:
+        """Request a non-terminal stop for desktop application shutdown.
+
+        A live worker observes SUSPEND after its current operation, exits without
+        acknowledging a manual PAUSE, and releases its leases. The job remains
+        RUNNING/RATE_LIMITED without a live lease so normal startup recovery can
+        move it to PAUSED and honor the persisted autoResume setting.
+        """
+        job = self._job_repo.get(job_id)
+        if job is None:
+            raise ValueError(f"Unknown job: {job_id}")
+        if job.status in (JobStatus.COMPLETED, JobStatus.CANCELLED):
+            return
+        # Persist SUSPEND even if the worker process is still between
+        # process startup and lease claim. mark_started_if_owned() deliberately
+        # preserves this command so the first worker loop will stop immediately.
+        self._job_repo.set_requested_command(job_id, "SUSPEND")
 
     def resume(self, job_id: str) -> None:
         job = self._job_repo.get(job_id)

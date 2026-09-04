@@ -44,6 +44,10 @@ class JobCommand(str, enum.Enum):
     PAUSE = "PAUSE"
     RESUME = "RESUME"
     CANCEL = "CANCEL"
+    # Internal lifecycle command used when the desktop application is closing.
+    # Unlike PAUSE it remains recoverable/auto-resumable on the next startup,
+    # and unlike CANCEL it is never terminal.
+    SUSPEND = "SUSPEND"
 
 
 #: Statuses that mean an item is fully settled and must never be re-processed.

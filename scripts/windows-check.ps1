@@ -2,6 +2,11 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+$nodeMajor = [int](node -p "process.versions.node.split('.')[0]")
+if ($LASTEXITCODE -ne 0 -or $nodeMajor -lt 22) {
+  throw 'Node.js 22 or newer is required. Run setup.bat to install the supported version.'
+}
+
 Write-Host '== Telegram Checker Desktop validation =='
 
 foreach ($tool in @('node','pnpm')) {
@@ -35,6 +40,9 @@ Write-Host ("Python: " + (& $venvPython --version))
 Write-Host ("Python executable: " + $venvPython)
 Write-Host ("SQLite: " + $env:DATABASE_PATH)
 
+pnpm --filter @workspace/api-server exec node -e "const Database=require('better-sqlite3'); const db=new Database(':memory:'); db.prepare('select 1').get(); db.close(); console.log('better-sqlite3 native binding: ok')"
+if ($LASTEXITCODE -ne 0) { throw 'better-sqlite3 native binding check failed.' }
+
 $pythonProject = Join-Path $root 'telegram-phone-number-checker'
 Push-Location $pythonProject
 try {
@@ -63,6 +71,9 @@ if ($LASTEXITCODE -ne 0) { throw 'TypeScript typecheck failed.' }
 
 pnpm --filter @workspace/api-server run build
 if ($LASTEXITCODE -ne 0) { throw 'API build failed.' }
+
+pnpm --filter @workspace/api-server run test:integration
+if ($LASTEXITCODE -ne 0) { throw 'API integration tests failed.' }
 
 pnpm --filter @workspace/telegram-checker run build
 if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
