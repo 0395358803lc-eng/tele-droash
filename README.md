@@ -18,6 +18,34 @@ Do not delete or replace `SESSION_SECRET` after Telegram accounts have been adde
 
 For command-line/automation use, the equivalent project setup remains available as `pnpm desktop:setup` after Node.js/pnpm are installed. `setup.bat --no-pause` runs the one-click bootstrap without the final pause and is useful for automated verification.
 
+
+## Packaged Windows application
+
+Release builds no longer require the end user to install Node.js, pnpm, or Python. The packaged desktop application contains:
+
+- an Electron Windows shell with its own Node runtime,
+- the built React dashboard served by the bundled localhost API,
+- native SQLite support,
+- a PyInstaller-built `telegram-engine.exe` sidecar containing the Telegram/Telethon runtime.
+
+Build both Windows deliverables with:
+
+```powershell
+pnpm desktop:package
+```
+
+The build creates:
+
+- `release/windows/Telegram-Checker-Setup-<version>-x64.exe` - NSIS installer with Start Menu/Desktop shortcuts,
+- `release/windows/Telegram-Checker-Portable-<version>-x64.exe` - portable executable,
+- `release/windows/SHA256SUMS.txt` - SHA-256 checksums.
+
+Before reporting package success, the build launches the unpacked Electron executable in smoke-test mode. That smoke test loads the packaged native SQLite module, starts the localhost API, verifies `/api/healthz`, executes the bundled Telegram engine self-test, and performs a clean shutdown.
+
+On first packaged launch, the application stores its SQLite database under the Electron Windows user-data directory. If a legacy `DATABASE_PATH` and `SESSION_SECRET` from the `start.bat` installation are available, the application migrates the database and preserves the encryption secret so existing Telegram sessions remain readable.
+
+The CI-produced Windows executables are not Authenticode-signed unless a trusted code-signing certificate is explicitly configured for the release environment. Windows SmartScreen may therefore warn on newly downloaded builds even when their SHA-256 checksum matches the published `SHA256SUMS.txt`.
+
 ## Run & operate
 
 - `start.bat` - recommended normal-use launcher after setup; starts the complete local application.
@@ -97,4 +125,4 @@ pnpm desktop:backup
 
 `desktop:audit` requires internet access and runs `pip-audit` in a separate environment so audit tooling cannot mutate the application virtual environment. `desktop:check` does not rely on vulnerability feeds and is suitable for routine local validation.
 
-GitHub Actions also runs the Windows one-click setup and validation workflow on pushes to `main` / `fix/**` and on pull requests targeting `main`.
+GitHub Actions runs the Windows source validation workflow on pushes to `main` / `fix/**` and on pull requests targeting `main`. The Windows Package workflow builds and smoke-tests installer/portable artifacts on feature pushes and pull requests; `v*` tags can publish the validated executables and checksum file as a GitHub Release.

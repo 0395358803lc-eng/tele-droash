@@ -11,12 +11,7 @@ import {
 } from "@workspace/db";
 import { revealSecret } from "./telegram-crypto";
 import { logger } from "./logger";
-
-const pythonRoot = path.resolve(
-  import.meta.dirname,
-  "../../../telegram-phone-number-checker",
-);
-const pythonBin = process.env.PYTHON_BIN || "python";
+import { spawnTelegramPython } from "./python-runtime";
 const workerLogDir = path.resolve(path.dirname(databasePath), "logs");
 fs.mkdirSync(workerLogDir, { recursive: true });
 
@@ -32,16 +27,10 @@ export function runDesktopControl(
   timeoutMs = 30_000,
 ): Promise<ControlResponse> {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      pythonBin,
-      ["-m", "telegram_phone_number_checker.desktop_control"],
-      {
-        cwd: pythonRoot,
-        windowsHide: true,
-        stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, DATABASE_PATH: databasePath },
-      },
-    );
+    const child = spawnTelegramPython("desktop-control", {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, DATABASE_PATH: databasePath },
+    });
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -57,7 +46,7 @@ export function runDesktopControl(
       fail(new Error("Durable engine control command timed out."));
     }, timeoutMs);
 
-    child.stdout.on("data", (chunk) => {
+    child.stdout?.on("data", (chunk) => {
       stdout += chunk.toString();
       if (Buffer.byteLength(stdout, "utf8") > 2 * 1024 * 1024) {
         child.kill("SIGKILL");
@@ -65,7 +54,7 @@ export function runDesktopControl(
         fail(new Error("Durable engine control output exceeded 2 MB."));
       }
     });
-    child.stderr.on("data", (chunk) => {
+    child.stderr?.on("data", (chunk) => {
       stderr += chunk.toString();
       if (stderr.length > 4096) stderr = stderr.slice(-4096);
     });
@@ -120,22 +109,16 @@ export function spawnDurableWorker(
     fs.renameSync(logPath, rotatedPath);
   }
   const logFd = fs.openSync(logPath, "a");
-  const child = spawn(
-    pythonBin,
-    ["-m", "telegram_phone_number_checker.desktop_control"],
-    {
-      cwd: pythonRoot,
-      windowsHide: true,
-      detached: true,
-      stdio: ["pipe", logFd, logFd],
-      env: {
-        ...process.env,
-        DATABASE_PATH: databasePath,
-        MAX_ATTEMPTS: String(options.maxAttempts ?? 3),
-        MIN_REQUEST_INTERVAL_SECONDS: String(options.minRequestInterval ?? 1.2),
-      },
+  const child = spawnTelegramPython("desktop-control", {
+    detached: true,
+    stdio: ["pipe", logFd, logFd],
+    env: {
+      ...process.env,
+      DATABASE_PATH: databasePath,
+      MAX_ATTEMPTS: String(options.maxAttempts ?? 3),
+      MIN_REQUEST_INTERVAL_SECONDS: String(options.minRequestInterval ?? 1.2),
     },
-  );
+  });
   fs.closeSync(logFd);
   activeWorkers.set(jobId, child);
   child.once("exit", () => activeWorkers.delete(jobId));

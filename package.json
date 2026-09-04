@@ -13,7 +13,10 @@
     "desktop:backup": "python ./scripts/backup_sqlite.py",
     "desktop:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-setup.ps1",
     "desktop:start": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-start.ps1",
-    "desktop:audit": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-audit.ps1"
+    "desktop:audit": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-audit.ps1",
+    "desktop:package": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-windows-package.ps1",
+    "desktop:package:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-windows-package.ps1",
+    "desktop:python-engine": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-python-engine.ps1"
   },
   "private": true,
   "devDependencies": {
