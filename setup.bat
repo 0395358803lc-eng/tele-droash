@@ -26,17 +26,17 @@ echo.
 call :refresh_path
 
 rem ------------------------------------------------------------
-rem Node.js 20+
+rem Node.js 22+
 rem ------------------------------------------------------------
 set "NODE_OK=0"
 where node >nul 2>&1
 if not errorlevel 1 (
     for /f %%V in ('node -p "parseInt(process.versions.node.split('.')[0],10)" 2^>nul') do set "NODE_MAJOR=%%V"
-    if defined NODE_MAJOR if !NODE_MAJOR! GEQ 20 set "NODE_OK=1"
+    if defined NODE_MAJOR if !NODE_MAJOR! GEQ 22 set "NODE_OK=1"
 )
 
 if "%NODE_OK%"=="0" (
-    echo [SETUP] Node.js 20+ is missing. Installing Node.js LTS...
+    echo [SETUP] Node.js 22+ is missing. Installing Node.js LTS...
     call :require_winget || goto :failed
     winget install --id OpenJS.NodeJS.LTS -e --accept-package-agreements --accept-source-agreements --silent
     if errorlevel 1 (
