@@ -482,6 +482,26 @@ class JobController:
             self._job_repo.update_status(job_id, JobStatus.PAUSED)
             self._job_repo.clear_pause_state(job_id)
 
+    def suspend(self, job_id: str) -> None:
+        """Request a non-terminal stop for desktop application shutdown.
+
+        A live worker observes SUSPEND after its current operation, exits without
+        acknowledging a manual PAUSE, and releases its leases. The job remains
+        RUNNING/RATE_LIMITED without a live lease so normal startup recovery can
+        move it to PAUSED and honor the persisted autoResume setting.
+        """
+        job = self._job_repo.get(job_id)
+        if job is None:
+            raise ValueError(f"Unknown job: {job_id}")
+        if job.status in (JobStatus.COMPLETED, JobStatus.CANCELLED):
+            return
+        if self._job_repo.has_live_worker_lease(job_id):
+            self._job_repo.set_requested_command(job_id, "SUSPEND")
+            return
+        # No live owner remains. Do not turn this into a manual PAUSE or CANCEL;
+        # startup recovery owns the next transition for active statuses.
+        self._job_repo.clear_requested_command(job_id)
+
     def resume(self, job_id: str) -> None:
         job = self._job_repo.get(job_id)
         if job is None:
