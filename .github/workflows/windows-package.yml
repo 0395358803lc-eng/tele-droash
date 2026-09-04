@@ -3,6 +3,7 @@ name: Windows Package
 on:
   push:
     branches:
+      - main
       - "feat/**"
     tags:
       - "v*"
@@ -72,7 +73,13 @@ jobs:
 
       - name: Build and smoke-test Windows package
         shell: pwsh
-        run: .\scripts\build-windows-package.ps1 -SkipValidation
+        run: |
+          $buildArgs = @("-SkipValidation")
+          if ($env:GITHUB_REF -like "refs/tags/v*") {
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+            $buildArgs += @("-Version", $version)
+          }
+          & .\scripts\build-windows-package.ps1 @buildArgs
 
       - name: Upload Windows executables
         uses: actions/upload-artifact@v7
