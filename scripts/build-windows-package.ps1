@@ -39,7 +39,7 @@ if (Test-Path $releaseDir) { Remove-Item $releaseDir -Recurse -Force }
 
 Push-Location $packagingDir
 try {
-  npm install --no-audit --no-fund
+  npm install --no-audit --no-fund --package-lock=false
   if ($LASTEXITCODE -ne 0) { throw "Electron packaging dependencies failed to install." }
 
   npm run build
@@ -64,6 +64,9 @@ if ($portable.Length -lt 10MB) { throw "Portable artifact is unexpectedly small.
 
 Get-FileHash $setup.FullName -Algorithm SHA256
 Get-FileHash $portable.FullName -Algorithm SHA256
+
+& (Join-Path $root "scripts\smoke-windows-package.ps1")
+if ($LASTEXITCODE -ne 0) { throw "Packaged runtime smoke test failed." }
 
 Write-Host ("Installer: " + $setup.FullName)
 Write-Host ("Portable:  " + $portable.FullName)
