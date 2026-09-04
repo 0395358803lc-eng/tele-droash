@@ -373,3 +373,36 @@ def test_shutdown_suspend_releases_leases_and_remains_auto_recoverable(tmp_path:
     assert recovered.worker_id is None
     assert recovered.worker_lease_until is None
     db.close()
+
+
+def test_shutdown_suspend_before_claim_survives_mark_started(tmp_path: Path):
+    db = Database(tmp_path / "checker.db")
+    jobs = JobRepository(db)
+    results = ResultRepository(db)
+    job_id = "job-preclaim-suspend"
+    phone = "+84900000011"
+
+    jobs.create(job_id, "preclaim suspend", 1)
+    results.insert(job_id, "+84922222222", "+84922222222", 3)
+
+    controller = JobController(db)
+    controller.suspend(job_id)
+    assert jobs.get_requested_command(job_id) == "SUSPEND"
+
+    worker = make_worker(db, phone)
+    worker.claim(job_id)
+    assert jobs.mark_started_if_owned(job_id, worker.worker_id)
+    assert jobs.get_requested_command(job_id) == "SUSPEND"
+
+    done = []
+
+    async def run_case():
+        await worker.process(job_id, lambda: done.append(True))
+
+    asyncio.run(run_case())
+    assert worker.suspend_requested_by_shutdown is True
+    assert jobs.get_requested_command(job_id) == "NONE"
+    assert done == [True]
+
+    worker.release()
+    db.close()
