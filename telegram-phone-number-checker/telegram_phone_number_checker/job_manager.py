@@ -264,9 +264,9 @@ class JobManager:
                     self._worker_task.cancel()
                     await asyncio.gather(self._worker_task, return_exceptions=True)
                 self._job_repo.update_status_if_owned(
-                    job_id, worker.worker_id, JobStatus.PAUSED
+                    job_id, worker.worker_id, JobStatus.RUNNING
                 )
-                log_event(logger, "JOB_PAUSED_ON_SHUTDOWN", job_id=job_id)
+                log_event(logger, "JOB_SUSPENDED_ON_PROCESS_SHUTDOWN", job_id=job_id)
                 raise
             except LostOwnershipError:
                 # The worker lost its lease mid-run (takeover/expiry). This is not
@@ -308,12 +308,23 @@ class JobManager:
                 )
                 raise
             else:
-                # Worker ended normally. Finalize: only COMPLETED if every item is
-                # terminal; otherwise the job must remain recoverable (PAUSED).
+                # Worker ended normally. A desktop SUSPEND deliberately keeps
+                # the job RUNNING while leases are released in finally; startup
+                # recovery then converts it to PAUSED and honors autoResume.
+                # Other normal exits only become COMPLETED when every item is
+                # terminal; unfinished jobs remain recoverable.
                 self._job_repo.reconcile_stats(job_id)
                 job = self._job_repo.get(job_id)
 
-                if worker.cancel_requested_by_command:
+                if worker.suspend_requested_by_shutdown:
+                    if not self._job_repo.update_status_if_owned(
+                        job_id, worker.worker_id, JobStatus.RUNNING
+                    ):
+                        raise LostOwnershipError(
+                            f"Worker {worker.worker_id} cannot suspend job {job_id}"
+                        )
+                    final_status = JobStatus.RUNNING
+                elif worker.cancel_requested_by_command:
                     if not self._job_repo.update_status_if_owned(
                         job_id, worker.worker_id, JobStatus.CANCELLED
                     ):
