@@ -34,7 +34,7 @@ def _string_session(value: Any) -> StringSession:
 
 
 def _validated_saved_session(client: TelegramClient) -> str:
-    value = _validated_saved_session(client)
+    value = client.session.save()
     if not isinstance(value, str) or not value.strip():
         raise BridgeSessionError("Telegram không tạo được phiên đăng nhập hợp lệ.")
     _string_session(value)
