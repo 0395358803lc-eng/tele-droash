@@ -17,6 +17,30 @@ from telethon.sessions import StringSession
 logging.disable(logging.CRITICAL)
 
 
+class BridgeSessionError(ValueError):
+    """Stored Telegram StringSession cannot be restored safely."""
+
+
+class BridgeProtocolError(ValueError):
+    """Bridge input could not be decoded or validated."""
+
+
+def _string_session(value: Any) -> StringSession:
+    raw = "" if value is None else str(value).strip()
+    try:
+        return StringSession(raw)
+    except Exception as exc:
+        raise BridgeSessionError("Phiên Telegram đã lưu không hợp lệ. Hãy xóa tài khoản và đăng nhập lại.") from exc
+
+
+def _validated_saved_session(client: TelegramClient) -> str:
+    value = client.session.save()
+    if not isinstance(value, str) or not value.strip():
+        raise BridgeSessionError("Telegram không tạo được phiên đăng nhập hợp lệ.")
+    _string_session(value)
+    return value
+
+
 def safe_error(exc: Exception) -> dict[str, str]:
     name = exc.__class__.__name__
     mapping = {
@@ -30,25 +54,28 @@ def safe_error(exc: Exception) -> dict[str, str]:
         "SessionPasswordNeededError": "Tài khoản yêu cầu mật khẩu xác minh hai bước.",
         "PasswordHashInvalidError": "Mật khẩu xác minh hai bước không hợp lệ.",
         "AuthKeyUnregisteredError": "Phiên Telegram không còn hợp lệ.",
+        "BridgeSessionError": str(exc) or "Phiên Telegram đã lưu không hợp lệ.",
+        "BridgeProtocolError": str(exc) or "Dữ liệu trao đổi với Telegram engine không hợp lệ.",
     }
     return {"errorType": name, "message": mapping.get(name, "Telegram từ chối yêu cầu.")}
 
 
 async def run(payload: dict[str, Any]) -> dict[str, Any]:
-    command = payload.get("command")
-    api_id = int(payload["apiId"])
-    api_hash = str(payload["apiHash"])
-    phone = str(payload.get("phoneNumber", ""))
-    session = StringSession(payload.get("sessionString") or "")
-    client = TelegramClient(session, api_id, api_hash)
+    client = None
     try:
+        command = payload.get("command")
+        api_id = int(payload["apiId"])
+        api_hash = str(payload["apiHash"])
+        phone = str(payload.get("phoneNumber", ""))
+        session = _string_session(payload.get("sessionString"))
+        client = TelegramClient(session, api_id, api_hash)
         await client.connect()
         if command == "start":
             sent = await client.send_code_request(phone)
             return {
                 "state": "awaiting_code",
                 "phoneCodeHash": sent.phone_code_hash,
-                "sessionString": client.session.save(),
+                "sessionString": _validated_saved_session(client),
             }
         if command == "verify":
             try:
@@ -60,12 +87,12 @@ async def run(payload: dict[str, Any]) -> dict[str, Any]:
             except errors.SessionPasswordNeededError:
                 password = payload.get("password")
                 if not password:
-                    return {"state": "awaiting_2fa", "sessionString": client.session.save()}
+                    return {"state": "awaiting_2fa", "sessionString": _validated_saved_session(client)}
                 await client.sign_in(password=str(password))
             me = await client.get_me()
             return {
                 "state": "connected",
-                "sessionString": client.session.save(),
+                "sessionString": _validated_saved_session(client),
                 "displayName": " ".join(
                     part for part in [getattr(me, "first_name", None), getattr(me, "last_name", None)] if part
                 ) or None,
@@ -77,7 +104,7 @@ async def run(payload: dict[str, Any]) -> dict[str, Any]:
             me = await client.get_me()
             return {
                 "state": "connected",
-                "sessionString": client.session.save(),
+                "sessionString": _validated_saved_session(client),
                 "displayName": " ".join(
                     part for part in [getattr(me, "first_name", None), getattr(me, "last_name", None)] if part
                 ) or None,
@@ -147,16 +174,25 @@ async def run(payload: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         return {"state": "error", **safe_error(exc)}
     finally:
-        await client.disconnect()
+        if client is not None:
+            await client.disconnect()
 
 
 def main() -> None:
     try:
-        payload = json.loads(sys.stdin.readline())
+        raw = sys.stdin.readline()
+        if not raw:
+            raise BridgeProtocolError("Telegram engine không nhận được dữ liệu đầu vào.")
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise BridgeProtocolError("Dữ liệu đầu vào Telegram engine không hợp lệ.")
         result = asyncio.run(run(payload))
         print(json.dumps(result, ensure_ascii=False), flush=True)
-    except Exception:
-        print(json.dumps({"state": "error", "message": "Không thể khởi chạy bộ máy Telegram."}), flush=True)
+    except json.JSONDecodeError as exc:
+        error = BridgeProtocolError("Telegram engine nhận JSON không hợp lệ.")
+        print(json.dumps({"state": "error", **safe_error(error)}, ensure_ascii=False), flush=True)
+    except Exception as exc:
+        print(json.dumps({"state": "error", **safe_error(exc)}, ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":
