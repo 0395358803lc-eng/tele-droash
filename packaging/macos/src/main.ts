@@ -301,8 +301,18 @@ async function startDesktop(): Promise<void> {
   const legacyDatabasePath = process.env.DATABASE_PATH;
   const legacySessionSecret = process.env.SESSION_SECRET;
 
+  console.info("Telegram Checker desktop startup", {
+    platform: process.platform,
+    arch: process.arch,
+    packaged: electronApp.isPackaged,
+    smokeTestMode,
+  });
+
   const { databasePath, staticDir } = configurePackagedEnvironment();
-  process.env.SESSION_SECRET = ensureSessionSecret(legacySessionSecret);
+  process.env.SESSION_SECRET = smokeTestMode
+    ? legacySessionSecret?.trim() ||
+      "macos-packaged-smoke-secret-0123456789abcdef0123456789abcdef"
+    : ensureSessionSecret(legacySessionSecret);
 
   if (!fs.existsSync(staticDir)) {
     throw new Error(`Packaged dashboard assets are missing: ${staticDir}`);
