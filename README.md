@@ -48,9 +48,22 @@ The CI-produced Windows executables are not Authenticode-signed unless a trusted
 
 ### Production release policy
 
-`packaging/windows/package.json` is the release-version authority. After a version bump is reviewed and merged to `main`, the Windows Package workflow builds the installer and portable executable, records SHA-256 checksums plus `AUTHENTICODE.txt`, and creates the matching immutable Git tag/GitHub Release only when that version does not already exist. Existing release tags are never moved or overwritten.
+Windows and macOS package versions must match. `packaging/windows/package.json` and `packaging/macos/package.json` are checked together before a production release can be published.
 
-For `v1.0.0`, the current production artifacts are intentionally published as unsigned unless `AUTHENTICODE.txt` reports `Status=Valid`. A trusted Authenticode certificate can be added later without changing the build architecture; production signing should then be required before future public releases.
+Platform workflows only build, validate, smoke-test, checksum, and upload temporary GitHub Actions artifacts. The dedicated `Production Release` workflow is the only workflow allowed to publish a versioned GitHub Release. It starts after the macOS workflow succeeds on `main`, waits for the matching Windows CI and Windows Package runs for the exact same commit SHA, downloads all three native artifact sets, verifies their published SHA-256 checksum files, and then creates one immutable tag/release containing:
+
+- Windows x64 Setup and Portable executables,
+- macOS Apple Silicon arm64 DMG and ZIP,
+- macOS Intel x64 DMG and ZIP,
+- Windows Authenticode evidence,
+- macOS signing/Gatekeeper/notarization evidence for both architectures,
+- per-platform and combined SHA-256 checksum files.
+
+Existing release tags are never moved and existing releases are never overwritten. A later `main` commit with an unchanged version therefore cannot silently replace binaries that users may already have downloaded.
+
+`v1.0.0` remains the original Windows-only release. `v1.1.0` is the first intended unified Windows + macOS release.
+
+Current CI artifacts do not have trusted Windows Authenticode or Apple Developer ID/notarization credentials configured. Windows SmartScreen or macOS Gatekeeper may therefore warn until those production signing credentials are added.
 
 ## Packaged macOS application
 
