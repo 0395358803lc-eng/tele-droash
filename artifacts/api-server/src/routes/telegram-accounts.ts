@@ -92,11 +92,13 @@ function publicAccount(account: TelegramAccount) {
 function runBridge(payload: Record<string, unknown>): Promise<BridgeResult> {
   return new Promise((resolve, reject) => {
     const child = spawnTelegramPython("api-bridge", {
-      stdio: ["pipe", "pipe", "ignore"],
+      stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, PYTHONUNBUFFERED: "1" },
     });
     let stdout = "";
+    let stderr = "";
     const maxStdoutBytes = 8 * 1024 * 1024;
+    const maxStderrBytes = 64 * 1024;
     const phoneCount = Array.isArray(payload.phones)
       ? payload.phones.length
       : 0;
@@ -118,21 +120,30 @@ function runBridge(payload: Record<string, unknown>): Promise<BridgeResult> {
         );
       }
     });
+    child.stderr?.on("data", (chunk) => {
+      if (Buffer.byteLength(stderr, "utf8") >= maxStderrBytes) return;
+      stderr += chunk.toString();
+      if (Buffer.byteLength(stderr, "utf8") > maxStderrBytes) {
+        stderr = Buffer.from(stderr, "utf8").subarray(0, maxStderrBytes).toString("utf8");
+      }
+    });
     child.on("error", () => {
       clearTimeout(timer);
       reject(new Error("Telegram engine is unavailable."));
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code !== 0)
+      if (code !== 0) {
+        if (stderr.trim()) console.error("Telegram engine stderr:", stderr.trim());
         return reject(new Error("Telegram engine exited unexpectedly."));
+      }
       try {
         resolve(JSON.parse(stdout.trim()) as BridgeResult);
       } catch {
         reject(new Error("Telegram engine returned an invalid response."));
       }
     });
-    child.stdin?.end(JSON.stringify(payload));
+    child.stdin?.end(`${JSON.stringify(payload)}\n`);
   });
 }
 
