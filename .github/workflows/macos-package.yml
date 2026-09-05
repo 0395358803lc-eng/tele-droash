@@ -1,0 +1,100 @@
+name: macOS Package
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate macOS runtime
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install project pnpm
+        run: npm install --global pnpm@10.34.5
+
+      - name: Validate source runtime on macOS
+        run: bash ./scripts/macos-check.sh
+
+  package:
+    name: Build macOS ${{ matrix.arch }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install project pnpm
+        run: npm install --global pnpm@10.34.5
+
+      - name: Validate Bash packaging syntax
+        run: |
+          bash -n ./scripts/macos-check.sh
+          bash -n ./scripts/build-python-engine-macos.sh
+          bash -n ./scripts/build-macos-package.sh
+          bash -n ./scripts/smoke-macos-package.sh
+          bash -n ./scripts/check-macos-signing.sh
+
+      - name: Build and smoke-test macOS package
+        run: bash ./scripts/build-macos-package.sh "${{ matrix.arch }}"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: telegram-checker-macos-${{ matrix.arch }}-${{ github.sha }}
+          path: |
+            release/macos/Telegram-Checker-*-macOS-${{ matrix.arch }}.dmg
+            release/macos/Telegram-Checker-*-macOS-${{ matrix.arch }}.zip
+            release/macos/SHA256SUMS-macOS-${{ matrix.arch }}.txt
+            release/macos/MACOS-SIGNING-${{ matrix.arch }}.txt
+          if-no-files-found: error
+          retention-days: 14

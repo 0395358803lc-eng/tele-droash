@@ -16,7 +16,10 @@
     "desktop:audit": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-audit.ps1",
     "desktop:package": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-windows-package.ps1",
     "desktop:package:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-windows-package.ps1",
-    "desktop:python-engine": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-python-engine.ps1"
+    "desktop:python-engine": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-python-engine.ps1",
+    "desktop:macos:check": "bash ./scripts/macos-check.sh",
+    "desktop:package:macos": "bash ./scripts/build-macos-package.sh",
+    "desktop:python-engine:macos": "bash ./scripts/build-python-engine-macos.sh"
   },
   "private": true,
   "devDependencies": {

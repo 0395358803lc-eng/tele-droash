@@ -1,6 +1,6 @@
 # Telegram Checker
 
-Telegram Checker is a local Windows dashboard for preparing, running, monitoring, resuming, reviewing, and exporting durable Telegram phone-number checking jobs.
+Telegram Checker is a local Windows and macOS desktop dashboard for preparing, running, monitoring, resuming, reviewing, and exporting durable Telegram phone-number checking jobs.
 
 ## First-time setup
 
@@ -51,6 +51,39 @@ The CI-produced Windows executables are not Authenticode-signed unless a trusted
 `packaging/windows/package.json` is the release-version authority. After a version bump is reviewed and merged to `main`, the Windows Package workflow builds the installer and portable executable, records SHA-256 checksums plus `AUTHENTICODE.txt`, and creates the matching immutable Git tag/GitHub Release only when that version does not already exist. Existing release tags are never moved or overwritten.
 
 For `v1.0.0`, the current production artifacts are intentionally published as unsigned unless `AUTHENTICODE.txt` reports `Status=Valid`. A trusted Authenticode certificate can be added later without changing the build architecture; production signing should then be required before future public releases.
+
+## Packaged macOS application
+
+The macOS package uses the same React dashboard, localhost API, SQLite database model, durable worker lifecycle, and Telethon engine as the Windows application. End users do not need to install Node.js, pnpm, or Python.
+
+Supported macOS runtime:
+
+- macOS 13 Ventura or newer,
+- Apple Silicon `arm64`,
+- Intel `x64`.
+
+Build and validate on macOS with:
+
+```bash
+pnpm desktop:macos:check
+pnpm desktop:package:macos
+```
+
+The native CI matrix builds each architecture on matching Apple hardware/runner instead of cross-compiling the PyInstaller sidecar or native SQLite module.
+
+Artifacts:
+
+- `Telegram-Checker-<version>-macOS-arm64.dmg` - Apple Silicon installer image,
+- `Telegram-Checker-<version>-macOS-arm64.zip` - Apple Silicon archive,
+- `Telegram-Checker-<version>-macOS-x64.dmg` - Intel installer image,
+- `Telegram-Checker-<version>-macOS-x64.zip` - Intel archive,
+- architecture-specific SHA-256 and `MACOS-SIGNING` evidence files.
+
+Packaged application data is stored through Electron's macOS user-data directory, normally under `~/Library/Application Support/Telegram Checker`. The SQLite database and encrypted session-secret record are therefore preserved independently from the DMG/ZIP file.
+
+Every package build must pass a packaged runtime smoke test that starts the bundled app executable, loads native SQLite, starts the localhost API, verifies `/api/healthz`, runs the packaged Telegram engine self-test, and shuts down cleanly.
+
+Current CI builds intentionally skip Developer ID signing and Apple notarization until Apple Developer credentials are configured. Unsigned/non-notarized builds may be blocked by Gatekeeper. The `MACOS-SIGNING-<arch>.txt` file records code-signing, Gatekeeper, and notarization status for each artifact.
 
 ## Run & operate
 
