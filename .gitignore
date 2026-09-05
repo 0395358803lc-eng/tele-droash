@@ -64,3 +64,5 @@ telegram-phone-number-checker/data/
 /release/
 /.build/
 packaging/windows/package-lock.json
+
+packaging/macos/package-lock.json
