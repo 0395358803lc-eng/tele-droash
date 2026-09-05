@@ -149,7 +149,7 @@ function configurePackagedEnvironment(): {
       "telegram-phone-number-checker",
       ".venv",
       "bin",
-      "python3",
+      "python",
     );
   }
 
@@ -264,8 +264,7 @@ function verifyPackagedEngine(): void {
   if (!engine) return;
 
   const result = spawnSync(engine, ["self-test"], {
-    windowsHide: true,
-    encoding: "utf8",
+        encoding: "utf8",
     timeout: 30_000,
   });
   if (result.error) throw result.error;
