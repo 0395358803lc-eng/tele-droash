@@ -1,0 +1,214 @@
+name: Production Release
+
+on:
+  workflow_run:
+    workflows:
+      - macOS Package
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: production-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish multi-platform production release
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      MAC_RUN_ID: ${{ github.event.workflow_run.id }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Verify synchronized package versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          WIN_VERSION="$(node -p "require('./packaging/windows/package.json').version")"
+          MAC_VERSION="$(node -p "require('./packaging/macos/package.json').version")"
+          if [[ "$WIN_VERSION" != "$MAC_VERSION" ]]; then
+            echo "Windows version $WIN_VERSION does not match macOS version $MAC_VERSION."
+            exit 1
+          fi
+          echo "VERSION=$WIN_VERSION" >> "$GITHUB_ENV"
+          echo "TAG=v$WIN_VERSION" >> "$GITHUB_ENV"
+
+      - name: Wait for matching Windows gates
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          wait_for_workflow() {
+            local workflow_file="$1"
+            local label="$2"
+            local run_id=""
+
+            for attempt in $(seq 1 80); do
+              run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}/runs?head_sha=${SHA}&event=push&per_page=20" --jq '.workflow_runs[0].id // empty')"
+              if [[ -n "$run_id" ]]; then
+                status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.status')"
+                conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.conclusion // ""')"
+                echo "$label run $run_id: status=$status conclusion=$conclusion" >&2
+                if [[ "$status" == "completed" ]]; then
+                  if [[ "$conclusion" != "success" ]]; then
+                    echo "$label did not succeed for commit $SHA." >&2
+                    exit 1
+                  fi
+                  echo "$run_id"
+                  return 0
+                fi
+              else
+                echo "Waiting for $label run for commit $SHA..." >&2
+              fi
+              sleep 15
+            done
+
+            echo "Timed out waiting for $label for commit $SHA." >&2
+            exit 1
+          }
+
+          WIN_PACKAGE_RUN_ID="$(wait_for_workflow windows-package.yml "Windows Package")"
+          WIN_CI_RUN_ID="$(wait_for_workflow ci.yml "Windows CI")"
+          echo "WIN_PACKAGE_RUN_ID=$WIN_PACKAGE_RUN_ID" >> "$GITHUB_ENV"
+          echo "WIN_CI_RUN_ID=$WIN_CI_RUN_ID" >> "$GITHUB_ENV"
+
+      - name: Download validated platform artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release/windows release/macos-arm64 release/macos-x64
+          gh run download "$WIN_PACKAGE_RUN_ID" -n "telegram-checker-windows-${SHA}" -D release/windows
+          gh run download "$MAC_RUN_ID" -n "telegram-checker-macos-arm64-${SHA}" -D release/macos-arm64
+          gh run download "$MAC_RUN_ID" -n "telegram-checker-macos-x64-${SHA}" -D release/macos-x64
+
+      - name: Verify checksums and stage release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd release/windows && sha256sum -c SHA256SUMS.txt)
+          (cd release/macos-arm64 && sha256sum -c SHA256SUMS-macOS-arm64.txt)
+          (cd release/macos-x64 && sha256sum -c SHA256SUMS-macOS-x64.txt)
+
+          mkdir -p release/publish
+
+          cp "release/windows/Telegram-Checker-Setup-${VERSION}-x64.exe" release/publish/
+          cp "release/windows/Telegram-Checker-Portable-${VERSION}-x64.exe" release/publish/
+          cp release/windows/SHA256SUMS.txt release/publish/SHA256SUMS-Windows.txt
+          cp release/windows/AUTHENTICODE.txt release/publish/AUTHENTICODE-Windows.txt
+
+          cp "release/macos-arm64/Telegram-Checker-${VERSION}-macOS-arm64.dmg" release/publish/
+          cp "release/macos-arm64/Telegram-Checker-${VERSION}-macOS-arm64.zip" release/publish/
+          cp release/macos-arm64/SHA256SUMS-macOS-arm64.txt release/publish/
+          cp release/macos-arm64/MACOS-SIGNING-arm64.txt release/publish/
+
+          cp "release/macos-x64/Telegram-Checker-${VERSION}-macOS-x64.dmg" release/publish/
+          cp "release/macos-x64/Telegram-Checker-${VERSION}-macOS-x64.zip" release/publish/
+          cp release/macos-x64/SHA256SUMS-macOS-x64.txt release/publish/
+          cp release/macos-x64/MACOS-SIGNING-x64.txt release/publish/
+
+          (
+            cd release/publish
+            sha256sum Telegram-Checker-* > SHA256SUMS-ALL.txt
+          )
+
+      - name: Publish immutable multi-platform release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REQUIRED_ASSETS=(
+            "Telegram-Checker-Setup-${VERSION}-x64.exe"
+            "Telegram-Checker-Portable-${VERSION}-x64.exe"
+            "Telegram-Checker-${VERSION}-macOS-arm64.dmg"
+            "Telegram-Checker-${VERSION}-macOS-arm64.zip"
+            "Telegram-Checker-${VERSION}-macOS-x64.dmg"
+            "Telegram-Checker-${VERSION}-macOS-x64.zip"
+            "SHA256SUMS-Windows.txt"
+            "SHA256SUMS-macOS-arm64.txt"
+            "SHA256SUMS-macOS-x64.txt"
+            "SHA256SUMS-ALL.txt"
+            "AUTHENTICODE-Windows.txt"
+            "MACOS-SIGNING-arm64.txt"
+            "MACOS-SIGNING-x64.txt"
+          )
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            EXISTING="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+            for asset in "${REQUIRED_ASSETS[@]}"; do
+              if ! grep -Fxq "$asset" <<< "$EXISTING"; then
+                echo "Existing release $TAG is missing required asset: $asset"
+                exit 1
+              fi
+            done
+            echo "Release $TAG already exists with the complete immutable asset set."
+            exit 0
+          fi
+
+          git fetch --tags --force
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            TAG_TARGET="$(git rev-list -n 1 "$TAG")"
+            if [[ "$TAG_TARGET" != "$SHA" ]]; then
+              echo "Existing tag $TAG points to $TAG_TARGET, not $SHA."
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" "$SHA" -m "Telegram Checker $TAG"
+            git push origin "$TAG"
+          fi
+
+          cat > release/publish/RELEASE-NOTES.md <<EOF
+          Telegram Checker ${TAG}
+
+          Multi-platform production release built and smoke-tested from one main commit.
+
+          Windows:
+          - x64 NSIS installer
+          - x64 portable executable
+          - Authenticode evidence and SHA-256 checksums
+
+          macOS:
+          - Apple Silicon arm64 DMG + ZIP
+          - Intel x64 DMG + ZIP
+          - signing/Gatekeeper/notarization evidence and SHA-256 checksums
+          - minimum supported macOS: 13 Ventura
+
+          Validation:
+          - Windows CI: PASS
+          - Windows packaged runtime smoke test: PASS
+          - macOS source validation: PASS
+          - macOS arm64 packaged runtime smoke test: PASS
+          - macOS x64 packaged runtime smoke test: PASS
+          - bundled Telegram engine self-test: PASS on all packaged platforms
+
+          Signing:
+          - Windows Authenticode status is recorded in AUTHENTICODE-Windows.txt.
+          - macOS Developer ID, Gatekeeper, and notarization status are recorded per architecture.
+          - Current CI configuration does not provide trusted Windows or Apple signing credentials, so OS security warnings may appear.
+
+          Commit: ${SHA}
+          EOF
+
+          gh release create "$TAG" \
+            release/publish/Telegram-Checker-* \
+            release/publish/SHA256SUMS-*.txt \
+            release/publish/AUTHENTICODE-Windows.txt \
+            release/publish/MACOS-SIGNING-*.txt \
+            --target "$SHA" \
+            --title "Telegram Checker $TAG" \
+            --notes-file release/publish/RELEASE-NOTES.md \
+            --latest
